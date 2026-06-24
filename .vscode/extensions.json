@@ -3,7 +3,12 @@
   // for the documentation about the extensions.json format
   "recommendations": [
     "dbaeumer.vscode-eslint",
-    "ms-vscode.extension-test-runner",
     "ms-vscode-remote.remote-ssh"
+  ],
+  // The Extension Test Runner launches an Electron VS Code host that needs an X
+  // server. In this headless workshop environment that integration is unreliable,
+  // so tests are run via `npm test` instead. Mark it unwanted to avoid the prompt.
+  "unwantedRecommendations": [
+    "ms-vscode.extension-test-runner"
   ]
 }
