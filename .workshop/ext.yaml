@@ -1,0 +1,6 @@
+name: ext
+base: ubuntu@24.04
+sdks:
+  - name: node
+    channel: "24"
+  - name: vscode-remote
