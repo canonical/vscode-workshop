@@ -93,7 +93,7 @@
         {
           "command": "workshop.reopenLocally",
           "when": "remoteName == 'ssh-remote'",
-          "group": "remote_10_workshop@1"
+          "group": "remote_10_ssh-remote_workshop"
         }
       ]
     }
