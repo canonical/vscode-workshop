@@ -6,9 +6,14 @@ import { statusIcon } from '../ui/statusIcon';
 
 suite('workshops model', () => {
   test('normalizeStatus maps known statuses case-insensitively', () => {
-    assert.strictEqual(normalizeStatus('ready'), 'Ready');
-    assert.strictEqual(normalizeStatus('STOPPED'), 'Stopped');
+    assert.strictEqual(normalizeStatus('ready'), 'On');
+    assert.strictEqual(normalizeStatus('READY'), 'On');
+    assert.strictEqual(normalizeStatus('stopped'), 'Off');
+    assert.strictEqual(normalizeStatus('STOPPED'), 'Off');
+    assert.strictEqual(normalizeStatus('off'), 'Off');
     assert.strictEqual(normalizeStatus('Waiting'), 'Waiting');
+    assert.strictEqual(normalizeStatus('pending'), 'Pending');
+    assert.strictEqual(normalizeStatus('error'), 'Error');
     assert.strictEqual(normalizeStatus('bogus'), 'Unknown');
     assert.strictEqual(normalizeStatus(undefined), 'Unknown');
   });
@@ -29,7 +34,7 @@ suite('workshops model', () => {
 
     assert.deepStrictEqual(merged, [
       { name: 'alpha', status: 'Waiting' },
-      { name: 'beta', status: 'Ready' },
+      { name: 'beta', status: 'On' },
       { name: 'gamma', status: 'Off' },
     ]);
   });
@@ -41,10 +46,9 @@ suite('workshops model', () => {
 
 suite('statusIcon mapping', () => {
   const cases: Array<[Parameters<typeof statusIcon>[0], string, string | undefined]> = [
-    ['Ready', 'pass', 'charts.green'],
+    ['On', 'pass', 'charts.green'],
     ['Waiting', 'watch', 'charts.yellow'],
     ['Error', 'error', 'charts.red'],
-    ['Stopped', 'circle-outline', 'descriptionForeground'],
     ['Off', 'circle-large-outline', 'disabledForeground'],
     ['Pending', 'loading~spin', undefined],
     ['Unknown', 'circle-large-outline', 'descriptionForeground'],

@@ -1,28 +1,28 @@
 import { WorkshopClient, WorkshopsResponse } from './client';
 
 /**
- * Workshop lifecycle states, matching the statuses surfaced by the old
- * implementation (see `old/src/types.ts`).
+ * Workshop lifecycle states.
  *
- * - `Off`      — a definition exists on disk but there is no container.
+ * - `On`       — the workshop is up and reachable (daemon status: `ready`).
+ * - `Off`      — no running container (daemon status: `off`, `stopped`, or definition-only).
  * - `Pending`  — a transient state while a workshop is being launched.
- * - `Ready`    — the workshop is up and reachable.
- * - `Stopped`  — the container exists but is not running.
  * - `Waiting`  — paused mid-change, awaiting user input.
  * - `Error`    — the workshop failed.
  * - `Unknown`  — a status we don't recognise.
  */
-export type Status = 'Off' | 'Pending' | 'Ready' | 'Stopped' | 'Waiting' | 'Error' | 'Unknown';
-
-const KNOWN: Status[] = ['Off', 'Pending', 'Ready', 'Stopped', 'Waiting', 'Error'];
+export type Status = 'On' | 'Off' | 'Pending' | 'Waiting' | 'Error' | 'Unknown';
 
 /** Coerce a raw status string from the daemon into a known {@link Status}. */
 export function normalizeStatus(raw: string | undefined): Status {
-  if (!raw) {
-    return 'Unknown';
+  switch (raw?.toLowerCase()) {
+    case 'ready':   return 'On';
+    case 'off':     return 'Off';
+    case 'stopped': return 'Off';
+    case 'pending': return 'Pending';
+    case 'waiting': return 'Waiting';
+    case 'error':   return 'Error';
+    default:        return 'Unknown';
   }
-  const lc = raw.toLowerCase();
-  return KNOWN.find((s) => s.toLowerCase() === lc) ?? 'Unknown';
 }
 
 /** A workshop to display: its name and resolved status. */
