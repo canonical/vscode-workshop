@@ -63,7 +63,19 @@ export function activate(context: vscode.ExtensionContext) {
         void vscode.window.showErrorMessage('No workspace folder open.');
         return;
       }
-      void reopenInWorkshop(client, folder.uri.fsPath, item.workshop, context.globalStorageUri.fsPath);
+      const projectPath = folder.uri.fsPath;
+      // Persist the local path so "Reopen Locally" can navigate back to it.
+      void context.globalState.update('workshop.localProjectPath', projectPath);
+      void reopenInWorkshop(client, projectPath, item.workshop, context.globalStorageUri.fsPath);
+    }),
+    vscode.commands.registerCommand('workshop.reopenLocally', () => {
+      const localPath = context.globalState.get<string>('workshop.localProjectPath');
+      if (localPath) {
+        void vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(localPath), { forceReuseWindow: true });
+      } else {
+        // Fallback: just close the remote connection without reopening a folder.
+        void vscode.commands.executeCommand('workbench.action.remote.close');
+      }
     }),
   );
 }
