@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
 
-import { mergeWorkshops, normalizeStatus } from '../api/workshops';
+import { mergeWorkshops, normalizeStatus, reopenAction } from '../api/workshops';
 import { statusIcon } from '../ui/statusIcon';
 
 suite('workshops model', () => {
@@ -21,7 +21,7 @@ suite('workshops model', () => {
   test('mergeWorkshops combines live workshops and definition files', () => {
     const merged = mergeWorkshops({
       workshops: [
-        { 'project-id': 'p', name: 'beta', status: 'ready' },
+        { 'project-id': 'p', name: 'beta', status: 'ready', hostname: 'beta.p.wp' },
         { 'project-id': 'p', name: 'alpha', status: 'waiting' },
       ],
       files: [
@@ -33,14 +33,49 @@ suite('workshops model', () => {
     });
 
     assert.deepStrictEqual(merged, [
-      { name: 'alpha', status: 'Waiting' },
-      { name: 'beta', status: 'On' },
+      { name: 'alpha', status: 'Waiting', rawStatus: 'waiting', hostname: undefined },
+      { name: 'beta', status: 'On', rawStatus: 'ready', hostname: 'beta.p.wp' },
       { name: 'gamma', status: 'Off' },
+    ]);
+  });
+
+  test('mergeWorkshops keeps stopped and off distinct in rawStatus', () => {
+    const merged = mergeWorkshops({
+      workshops: [
+        { 'project-id': 'p', name: 'stopped-one', status: 'stopped' },
+        { 'project-id': 'p', name: 'off-one', status: 'off' },
+      ],
+    });
+
+    assert.deepStrictEqual(merged, [
+      { name: 'off-one', status: 'Off', rawStatus: 'off', hostname: undefined },
+      { name: 'stopped-one', status: 'Off', rawStatus: 'stopped', hostname: undefined },
     ]);
   });
 
   test('mergeWorkshops tolerates empty response', () => {
     assert.deepStrictEqual(mergeWorkshops({}), []);
+  });
+});
+
+suite('reopenAction', () => {
+  test('running workshops connect directly', () => {
+    assert.strictEqual(reopenAction({ name: 'a', status: 'On', rawStatus: 'ready' }), 'connect');
+    assert.strictEqual(
+      reopenAction({ name: 'a', status: 'Waiting', rawStatus: 'waiting' }),
+      'connect',
+    );
+  });
+
+  test('built-but-stopped workshops start', () => {
+    assert.strictEqual(reopenAction({ name: 'a', status: 'Off', rawStatus: 'stopped' }), 'start');
+    assert.strictEqual(reopenAction({ name: 'a', status: 'Off', rawStatus: 'STOPPED' }), 'start');
+  });
+
+  test('off and definition-only workshops launch', () => {
+    assert.strictEqual(reopenAction({ name: 'a', status: 'Off', rawStatus: 'off' }), 'launch');
+    // Definition-only: no rawStatus.
+    assert.strictEqual(reopenAction({ name: 'a', status: 'Off' }), 'launch');
   });
 });
 
