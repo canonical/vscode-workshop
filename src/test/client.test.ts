@@ -70,7 +70,7 @@ suite('WorkshopClient over a fake workshopd socket', () => {
 
     assert.deepStrictEqual(workshops, [
       { name: 'db', status: 'Off' },
-      { name: 'web', status: 'Ready' },
+      { name: 'web', status: 'On' },
     ]);
   });
 
