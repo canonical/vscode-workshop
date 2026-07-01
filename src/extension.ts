@@ -4,7 +4,8 @@ import * as vscode from 'vscode';
 import { WorkshopClient } from './api/client';
 import { WorkshopPoller } from './poller';
 import { listProjectWorkshops, Workshop } from './api/workshops';
-import { UNAVAILABLE_CONTEXT, WorkshopsTreeProvider } from './ui/workshopsTree';
+import { UNAVAILABLE_CONTEXT, WorkshopsTreeProvider, WorkshopItem } from './ui/workshopsTree';
+import { reopenInWorkshop } from './remote/reopen';
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -56,6 +57,14 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('workshop.install', () =>
       vscode.env.openExternal(vscode.Uri.parse('https://snapcraft.io/workshop')),
     ),
+    vscode.commands.registerCommand('workshop.reopenInWorkshop', (item: WorkshopItem) => {
+      const folder = vscode.workspace.workspaceFolders?.[0];
+      if (!folder) {
+        void vscode.window.showErrorMessage('No workspace folder open.');
+        return;
+      }
+      void reopenInWorkshop(client, folder.uri.fsPath, item.workshop, context.globalStorageUri.fsPath);
+    }),
   );
 }
 

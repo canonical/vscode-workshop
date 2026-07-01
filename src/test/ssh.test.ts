@@ -28,9 +28,9 @@ suite('ensureKeypair', () => {
     const kp = ensureKeypair(tmpDir);
 
     assert.ok(fs.existsSync(kp.privateKeyPath));
-    // Private key must be in OpenSSH format (same as ssh-keygen -t ed25519).
+    // Private key is PKCS8 PEM — OpenSSH 7.8+ reads it natively.
     const priv = fs.readFileSync(kp.privateKeyPath, 'utf8');
-    assert.ok(priv.startsWith('-----BEGIN OPENSSH PRIVATE KEY-----'), 'private key is OpenSSH format');
+    assert.ok(priv.startsWith('-----BEGIN PRIVATE KEY-----'), 'private key is PKCS8 PEM');
 
     // Public key line must be in authorized_keys format.
     assert.ok(kp.publicKeyLine.startsWith('ssh-ed25519 '), 'public key starts with ssh-ed25519');
