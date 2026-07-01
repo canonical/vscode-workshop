@@ -3,7 +3,7 @@
   "displayName": "Workshop",
   "description": "Use workshops as a development environment in VS Code",
   "version": "0.1.0",
-    "repository": {
+  "repository": {
     "type": "git",
     "url": "https://github.com/canonical/vscode-workshop.git"
   },
@@ -85,6 +85,7 @@
     "@types/mocha": "^10.0.10",
     "@types/node": "24.x",
     "@types/vscode": "^1.90.0",
+    "@types/ws": "^8.18.1",
     "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^3.0.0",
     "esbuild": "^0.28.1",
@@ -96,5 +97,8 @@
   "overrides": {
     "diff": "^8.0.4",
     "serialize-javascript": "^7.0.6"
+  },
+  "dependencies": {
+    "ws": "^8.21.0"
   }
 }
