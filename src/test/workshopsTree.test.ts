@@ -1,71 +1,121 @@
 import * as assert from 'assert';
-import * as os from 'os';
-import * as path from 'path';
-import * as fs from 'fs';
 import * as vscode from 'vscode';
 
-import { WorkshopClient } from '../api/client';
+import { WorkshopUnavailableError } from '../api/client';
+import { WorkshopPoller } from '../poller';
+import { Workshop } from '../api/workshops';
 import { UNAVAILABLE_CONTEXT, WorkshopsTreeProvider } from '../ui/workshopsTree';
 
-/**
- * Run `body` with `vscode.workspace.workspaceFolders` temporarily replaced and
- * `vscode.commands.executeCommand` spying on `setContext` calls, restoring both
- * afterwards. Returns the last value `setContext` was given for
- * {@link UNAVAILABLE_CONTEXT}.
- */
-async function withStubs(
-  folders: readonly vscode.WorkspaceFolder[] | undefined,
-  body: (provider: WorkshopsTreeProvider) => Promise<void>,
-): Promise<boolean | undefined> {
-  const foldersDescriptor = Object.getOwnPropertyDescriptor(
-    vscode.workspace,
-    'workspaceFolders',
-  );
-  Object.defineProperty(vscode.workspace, 'workspaceFolders', {
-    configurable: true,
-    get: () => folders,
-  });
+type ExecuteCommand = typeof vscode.commands.executeCommand;
+type MutableCommands = { executeCommand: ExecuteCommand };
 
-  const originalExecute = vscode.commands.executeCommand;
-  let available: boolean | undefined;
-  (vscode.commands as { executeCommand: typeof vscode.commands.executeCommand }).executeCommand =
-    ((command: string, ...args: unknown[]) => {
-      if (command === 'setContext' && args[0] === UNAVAILABLE_CONTEXT) {
-        available = args[1] as boolean;
-        return Promise.resolve(undefined);
-      }
-      return originalExecute(command, ...(args as []));
-    }) as typeof vscode.commands.executeCommand;
+/**
+ * Intercepts setContext calls for UNAVAILABLE_CONTEXT, runs body,
+ * restores the original, then returns every value that was set.
+ */
+async function captureUnavailable(body: () => Promise<void>): Promise<boolean[]> {
+  const original = vscode.commands.executeCommand;
+  const captured: boolean[] = [];
+  (vscode.commands as MutableCommands).executeCommand = ((command: string, ...args: unknown[]) => {
+    if (command === 'setContext' && args[0] === UNAVAILABLE_CONTEXT) {
+      captured.push(args[1] as boolean);
+      return Promise.resolve(undefined);
+    }
+    return original(command, ...(args as []));
+  }) as ExecuteCommand;
 
   try {
-    // Point the client at a socket that does not exist -> unavailable.
-    const missingSocket = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'workshopd-')),
-      'missing.socket',
-    );
-    await body(new WorkshopsTreeProvider(new WorkshopClient({ socketPath: missingSocket })));
+    await body();
   } finally {
-    (vscode.commands as { executeCommand: typeof vscode.commands.executeCommand }).executeCommand =
-      originalExecute;
-    if (foldersDescriptor) {
-      Object.defineProperty(vscode.workspace, 'workspaceFolders', foldersDescriptor);
-    }
+    (vscode.commands as MutableCommands).executeCommand = original;
   }
-  return available;
+  return captured;
 }
 
-function fakeFolder(fsPath: string): vscode.WorkspaceFolder {
-  return { uri: vscode.Uri.file(fsPath), name: path.basename(fsPath), index: 0 };
-}
+suite('WorkshopsTreeProvider', () => {
+  test('renders workshops from the poller cache', async () => {
+    const workshops: Workshop[] = [
+      { name: 'web', status: 'Ready' },
+      { name: 'db', status: 'Off' },
+    ];
+    const poller = new WorkshopPoller<Workshop[]>(() => Promise.resolve(workshops), 50_000);
+    const provider = new WorkshopsTreeProvider(poller);
 
-suite('WorkshopsTreeProvider availability', () => {
+    await poller.poll();
+
+    const items = provider.getChildren();
+    assert.strictEqual(items.length, 2);
+    assert.strictEqual((items[0] as vscode.TreeItem).label, 'web');
+    assert.strictEqual((items[1] as vscode.TreeItem).label, 'db');
+
+    poller.dispose();
+    provider.dispose();
+  });
+
   test('sets workshop.unavailable=true and shows no items when daemon is unreachable', async () => {
+    const err = new WorkshopUnavailableError('socket missing', 'ENOENT');
+    const poller = new WorkshopPoller<Workshop[]>(() => Promise.reject(err), 50_000);
+    const provider = new WorkshopsTreeProvider(poller);
+
     let items: vscode.TreeItem[] = [];
-    const unavailable = await withStubs([fakeFolder('/repo')], async (provider) => {
-      items = await provider.getChildren();
+    const captured = await captureUnavailable(async () => {
+      await poller.poll();
+      items = provider.getChildren();
     });
 
-    assert.strictEqual(unavailable, true);
+    assert.deepStrictEqual(captured, [true]);
     assert.deepStrictEqual(items, []);
+
+    poller.dispose();
+    provider.dispose();
+  });
+
+  test('clears workshop.unavailable after a successful update following an error', async () => {
+    const err = new WorkshopUnavailableError('socket missing', 'ENOENT');
+    let shouldFail = true;
+    const poller = new WorkshopPoller<Workshop[]>(
+      () =>
+        shouldFail
+          ? Promise.reject(err)
+          : Promise.resolve([{ name: 'web', status: 'Ready' }]),
+      50_000,
+    );
+    const provider = new WorkshopsTreeProvider(poller);
+
+    const captured = await captureUnavailable(async () => {
+      await poller.poll();
+      shouldFail = false;
+      await poller.poll();
+    });
+
+    assert.deepStrictEqual(captured, [true, false]);
+    assert.strictEqual(provider.getChildren().length, 1);
+
+    poller.dispose();
+    provider.dispose();
+  });
+
+  test('sets workshop.unavailable=false on an empty but successful result', async () => {
+    const poller = new WorkshopPoller<Workshop[]>(() => Promise.resolve([]), 50_000);
+    const provider = new WorkshopsTreeProvider(poller);
+
+    const captured = await captureUnavailable(async () => {
+      await poller.poll();
+    });
+
+    assert.deepStrictEqual(captured, [false]);
+    assert.deepStrictEqual(provider.getChildren(), []);
+
+    poller.dispose();
+    provider.dispose();
+  });
+
+  test('getChildren on a child element always returns empty', async () => {
+    const poller = new WorkshopPoller<Workshop[]>(() => Promise.resolve([]), 50_000);
+    const provider = new WorkshopsTreeProvider(poller);
+    const fakeChild = new vscode.TreeItem('child');
+    assert.deepStrictEqual(provider.getChildren(fakeChild), []);
+    poller.dispose();
+    provider.dispose();
   });
 });
