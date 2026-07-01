@@ -19,7 +19,16 @@ export function activate(context: vscode.ExtensionContext) {
     if (!folder) {
       return Promise.resolve([]);
     }
-    return listProjectWorkshops(client, folder.uri.fsPath);
+    // When the window is connected to a remote via SSH, `folder.uri` has
+    // scheme `vscode-remote`, and `fsPath` returns the path on the remote
+    // machine (e.g. `/project`) — not a local path the daemon knows about.
+    // Fall back to the local project path saved when "Reopen in Workshop" was
+    // last invoked so the tree view keeps working from the remote window.
+    const projectPath =
+      folder.uri.scheme === 'file'
+        ? folder.uri.fsPath
+        : (context.globalState.get<string>('workshop.localProjectPath') ?? folder.uri.fsPath);
+    return listProjectWorkshops(client, projectPath);
   });
 
   const provider = new WorkshopsTreeProvider(poller, log);
@@ -59,11 +68,14 @@ export function activate(context: vscode.ExtensionContext) {
     ),
     vscode.commands.registerCommand('workshop.reopenInWorkshop', (item: WorkshopItem) => {
       const folder = vscode.workspace.workspaceFolders?.[0];
-      if (!folder) {
+      const projectPath =
+        folder?.uri.scheme === 'file'
+          ? folder.uri.fsPath
+          : (context.globalState.get<string>('workshop.localProjectPath') ?? folder?.uri.fsPath);
+      if (!projectPath) {
         void vscode.window.showErrorMessage('No workspace folder open.');
         return;
       }
-      const projectPath = folder.uri.fsPath;
       // Persist the local path so "Reopen Locally" can navigate back to it.
       void context.globalState.update('workshop.localProjectPath', projectPath);
       void reopenInWorkshop(client, projectPath, item.workshop, context.globalStorageUri.fsPath);
