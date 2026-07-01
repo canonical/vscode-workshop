@@ -29,6 +29,42 @@ export function normalizeStatus(raw: string | undefined): Status {
 export interface Workshop {
   name: string;
   status: Status;
+  /**
+   * The raw daemon status string (e.g. `ready`, `stopped`, `off`). Undefined
+   * for definition-only workshops that have never been launched. Kept
+   * alongside {@link status} because the display status collapses `stopped`
+   * and `off` into `Off`, but the reopen action needs to tell them apart.
+   */
+  rawStatus?: string;
+  /**
+   * The workshop's routable hostname. Present only when the workshop is
+   * running (see {@link WorkshopInfo.hostname}).
+   */
+  hostname?: string;
+}
+
+/**
+ * What {@link reopenInWorkshop} must do to bring a workshop online before
+ * connecting:
+ *
+ * - `connect` — already running; connect directly.
+ * - `start`   — built but stopped; issue the `start` action first.
+ * - `launch`  — never built (raw `off` or definition-only); `launch` first.
+ */
+export type ReopenAction = 'connect' | 'start' | 'launch';
+
+/**
+ * Decide how to reopen into a workshop from its model. Derived from the raw
+ * daemon status and origin, not the collapsed display {@link Status}.
+ */
+export function reopenAction(workshop: Workshop): ReopenAction {
+  if (workshop.status === 'On' || workshop.status === 'Waiting') {
+    return 'connect';
+  }
+  if (workshop.rawStatus?.toLowerCase() === 'stopped') {
+    return 'start';
+  }
+  return 'launch'; // raw 'off' or definition-only
 }
 
 /**
@@ -43,7 +79,12 @@ export function mergeWorkshops(response: WorkshopsResponse): Workshop[] {
     byName.set(file.name, { name: file.name, status: 'Off' });
   }
   for (const workshop of response.workshops ?? []) {
-    byName.set(workshop.name, { name: workshop.name, status: normalizeStatus(workshop.status) });
+    byName.set(workshop.name, {
+      name: workshop.name,
+      status: normalizeStatus(workshop.status),
+      rawStatus: workshop.status,
+      hostname: workshop.hostname,
+    });
   }
 
   return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));

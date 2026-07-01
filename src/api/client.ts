@@ -27,6 +27,12 @@ export interface WorkshopInfo {
   base?: string;
   status: string;
   notes?: string[];
+  /**
+   * The workshop's routable hostname on the `.wp` domain. Sent with
+   * `omitempty`, so it is present only once the workshop is running and has a
+   * network identity.
+   */
+  hostname?: string;
 }
 
 /**
