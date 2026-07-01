@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
-import { WorkshopClient, WorkshopUnavailableError } from '../api/client';
+import { WorkshopUnavailableError } from '../api/client';
+import { WorkshopPoller } from '../poller';
 import { statusIcon } from './statusIcon';
-import { listProjectWorkshops, Workshop } from '../api/workshops';
+import { Workshop } from '../api/workshops';
 
 /**
  * Context key toggled to drive the view's welcome content (see package.json).
@@ -26,60 +27,74 @@ class WorkshopItem extends vscode.TreeItem {
 }
 
 /**
- * Lists the workshops of the workspace's first folder, querying the daemon
- * through {@link WorkshopClient}.
+ * Renders workshops from a {@link WorkshopPoller}. Data is served from an
+ * in-memory cache that the poller keeps up-to-date; `getChildren` is
+ * synchronous and never hits the daemon itself.
+ *
+ * Visibility-gated polling is wired up externally (see `extension.ts`):
+ * the caller calls `poller.activate()` when the tree view becomes visible and
+ * disposes the handle when it is hidden.
  */
-export class WorkshopsTreeProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
+export class WorkshopsTreeProvider
+  implements vscode.TreeDataProvider<vscode.TreeItem>, vscode.Disposable
+{
   private readonly emitter = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this.emitter.event;
 
-  constructor(
-    private readonly client: WorkshopClient,
-    private readonly log?: vscode.LogOutputChannel,
-  ) { }
+  private cachedItems: Workshop[] = [];
+  private isUnavailable = false;
+  private readonly subscriptions: vscode.Disposable[] = [];
 
-  refresh(): void {
-    this.emitter.fire();
+  constructor(
+    poller: WorkshopPoller<Workshop[]>,
+    private readonly log?: vscode.LogOutputChannel,
+  ) {
+    this.subscriptions.push(
+      poller.onDidUpdate((workshops) => {
+        this.cachedItems = workshops;
+        this.isUnavailable = false;
+        void this.setUnavailable(false);
+        this.log?.info(`Updated ${workshops.length} workshop(s) from poller`);
+        this.emitter.fire();
+      }),
+      poller.onDidError((err) => {
+        if (err instanceof WorkshopUnavailableError) {
+          this.isUnavailable = true;
+          void this.setUnavailable(true);
+          this.log?.warn(
+            `Workshop daemon unavailable (${err.code ?? 'no code'}): ${err.message}. ` +
+              'Showing the welcome view.',
+          );
+        } else {
+          this.log?.error(`Poller error: ${err.message}`);
+        }
+        this.emitter.fire();
+      }),
+    );
   }
 
   getTreeItem(element: vscode.TreeItem): vscode.TreeItem {
     return element;
   }
 
-  async getChildren(element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
+  getChildren(element?: vscode.TreeItem): vscode.TreeItem[] {
     if (element) {
       return [];
     }
-    const folder = vscode.workspace.workspaceFolders?.[0];
-    if (!folder) {
-      await this.setUnavailable(false);
+    if (this.isUnavailable) {
       return [];
     }
-    // Keep the welcome view hidden while the request is in flight: VS Code shows
-    // its built-in tree loading spinner instead, avoiding a blink between the
-    // welcome stub and the workshops list. We only flag it unavailable below if
-    // the daemon turns out to be genuinely unreachable.
-    await this.setUnavailable(false);
-    try {
-      const workshops = await listProjectWorkshops(this.client, folder.uri.fsPath);
-      this.log?.info(`Listed ${workshops.length} workshop(s) for ${folder.uri.fsPath}`);
-      return workshops.map((w) => new WorkshopItem(w));
-    } catch (err) {
-      if (err instanceof WorkshopUnavailableError) {
-        // Returning no items lets the `viewsWelcome` content render instead.
-        await this.setUnavailable(true);
-        this.log?.warn(
-          `Workshop daemon unavailable (${err.code ?? 'no code'}): ${err.message}. ` +
-          'Showing the welcome view.',
-        );
-        return [];
-      }
-      this.log?.error(`Failed to list workshops: ${err instanceof Error ? err.message : err}`);
-      throw err;
-    }
+    return this.cachedItems.map((w) => new WorkshopItem(w));
   }
 
   private setUnavailable(unavailable: boolean): Thenable<unknown> {
     return vscode.commands.executeCommand('setContext', UNAVAILABLE_CONTEXT, unavailable);
+  }
+
+  dispose(): void {
+    this.emitter.dispose();
+    for (const sub of this.subscriptions) {
+      sub.dispose();
+    }
   }
 }
