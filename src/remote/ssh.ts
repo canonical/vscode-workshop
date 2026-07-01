@@ -17,9 +17,10 @@ export interface Keypair {
  * Return the workshop-vscode keypair stored under `storageDir`, generating it
  * if it does not exist yet. Idempotent: calling twice returns the same key.
  *
- * The private key is written in OpenSSH format (`-----BEGIN OPENSSH PRIVATE KEY-----`),
- * the same format produced by `ssh-keygen -t ed25519`. The public key line is
- * the `ssh-ed25519 <base64>` format required by `authorized_keys`.
+ * The private key is written in PKCS8 PEM format (`-----BEGIN PRIVATE KEY-----`).
+ * OpenSSH 7.8+ (2018) reads this natively, and all Ubuntu releases that run
+ * workshops ship a much newer OpenSSH. The public key line is the
+ * `ssh-ed25519 <base64>` format required by `authorized_keys`.
  */
 export function ensureKeypair(storageDir: string): Keypair {
   const privateKeyPath = path.join(storageDir, 'id_ed25519');
@@ -30,8 +31,7 @@ export function ensureKeypair(storageDir: string): Keypair {
     fs.mkdirSync(storageDir, { recursive: true });
     fs.writeFileSync(
       privateKeyPath,
-      // `openssh` is valid at runtime but absent from @types/node's overloads.
-      (privateKey.export({ type: 'openssh', format: 'pem' } as unknown as crypto.KeyExportOptions<'pem'>) as string),
+      privateKey.export({ type: 'pkcs8', format: 'pem' }) as string,
       { mode: 0o600 },
     );
     fs.writeFileSync(publicKeyPath, toAuthorizedKey(publicKey), { mode: 0o644 });

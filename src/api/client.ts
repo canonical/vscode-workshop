@@ -205,6 +205,40 @@ export class WorkshopClient {
     return { change: envelope.change, result: envelope.result };
   }
 
+  /**
+   * Fetch the current state of a single workshop.
+   * `GET /v1/projects/<projectId>/workshops/<name>`
+   */
+  async getWorkshop(projectId: string, name: string): Promise<WorkshopInfo> {
+    const result = await this.request(
+      'GET',
+      `/v1/projects/${encodeURIComponent(projectId)}/workshops/${encodeURIComponent(name)}`,
+    );
+    // The endpoint wraps WorkshopInfo in a Workshop struct with an extra `path`
+    // field; WorkshopInfo is embedded so all its fields are top-level.
+    return result as WorkshopInfo;
+  }
+
+  /**
+   * Trigger a lifecycle action (`start`, `launch`, or `stop`) on one or more
+   * workshops and wait for the change to complete.
+   *
+   * `POST /v1/projects/<id>/workshops` with `{ names, action }` returns an
+   * async change; we wait on it here so callers get back control only once the
+   * operation is fully done.
+   */
+  async workshopAction(
+    projectId: string,
+    names: string[],
+    action: 'start' | 'launch' | 'stop',
+  ): Promise<Change> {
+    const { change } = await this.postAsync(
+      `/v1/projects/${encodeURIComponent(projectId)}/workshops`,
+      { names, action },
+    );
+    return this.waitChange(change);
+  }
+
   /** Wait for a change to finish and return it, throwing if it errored. */
   async waitChange(changeId: string): Promise<Change> {
     const result = await this.request(

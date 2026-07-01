@@ -17,8 +17,8 @@ import { Workshop } from '../api/workshops';
 export const UNAVAILABLE_CONTEXT = 'workshop.unavailable';
 
 /** A single workshop row in the tree. */
-class WorkshopItem extends vscode.TreeItem {
-  constructor(workshop: Workshop) {
+export class WorkshopItem extends vscode.TreeItem {
+  constructor(readonly workshop: Workshop) {
     super(workshop.name, vscode.TreeItemCollapsibleState.None);
     this.description = workshop.status;
     this.iconPath = statusIcon(workshop.status);

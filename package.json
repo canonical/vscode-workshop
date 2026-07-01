@@ -10,6 +10,12 @@
   "engines": {
     "vscode": "^1.90.0"
   },
+  "extensionKind": [
+    "ui"
+  ],
+  "extensionDependencies": [
+    "ms-vscode-remote.remote-ssh"
+  ],
   "categories": [
     "Other"
   ],
@@ -48,6 +54,17 @@
         "command": "workshop.install",
         "title": "Install Workshop from the Snap Store",
         "category": "Workshop"
+      },
+      {
+        "command": "workshop.reopenInWorkshop",
+        "title": "Reopen in Workshop",
+        "category": "Workshop",
+        "icon": "$(remote)"
+      },
+      {
+        "command": "workshop.reopenLocally",
+        "title": "Reopen Locally",
+        "category": "Workshop"
       }
     ],
     "viewsWelcome": [
@@ -63,6 +80,20 @@
           "command": "workshop.refresh",
           "when": "view == workshop.workshops",
           "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "workshop.reopenInWorkshop",
+          "when": "view == workshop.workshops && viewItem == workshop",
+          "group": "inline"
+        }
+      ],
+      "statusBar/remoteIndicator": [
+        {
+          "command": "workshop.reopenLocally",
+          "when": "remoteName == 'ssh-remote'",
+          "group": "remote_10_workshop@1"
         }
       ]
     }
