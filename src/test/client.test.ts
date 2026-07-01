@@ -5,6 +5,12 @@ import * as path from 'path';
 import * as fs from 'fs';
 
 import { WorkshopClient, WorkshopUnavailableError } from '../api/client';
+import {
+  DEFAULT_SOCKET_PATH,
+  SNAP_SOCKET_PATH,
+  defaultSocketPath,
+  socketPathCandidates,
+} from '../api/client';
 import { listProjectWorkshops } from '../api/workshops';
 
 suite('WorkshopClient over a fake workshopd socket', () => {
@@ -90,5 +96,38 @@ suite('WorkshopClient when workshopd is not available', () => {
         return true;
       },
     );
+  });
+});
+
+suite('socket path resolution', () => {
+  test('candidates default to the snap path before the system default', () => {
+    assert.deepStrictEqual(socketPathCandidates({}), [SNAP_SOCKET_PATH, DEFAULT_SOCKET_PATH]);
+  });
+
+  test('$WORKSHOP_SOCKET and $WORKSHOP take precedence, in order, without duplicates', () => {
+    const candidates = socketPathCandidates({
+      WORKSHOP_SOCKET: '/custom/explicit.socket',
+      WORKSHOP: '/opt/workshop',
+    });
+    assert.deepStrictEqual(candidates, [
+      '/custom/explicit.socket',
+      '/opt/workshop/workshop.socket',
+      SNAP_SOCKET_PATH,
+      DEFAULT_SOCKET_PATH,
+    ]);
+  });
+
+  test('defaultSocketPath returns the first candidate that exists on disk', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'workshopd-'));
+    const existing = path.join(dir, 'workshop.socket');
+    fs.writeFileSync(existing, '');
+
+    const resolved = defaultSocketPath({ WORKSHOP_SOCKET: '/nope/missing.socket', WORKSHOP: dir });
+    assert.strictEqual(resolved, existing);
+  });
+
+  test('defaultSocketPath falls back to the first candidate when none exist', () => {
+    const resolved = defaultSocketPath({ WORKSHOP_SOCKET: '/nope/missing.socket' });
+    assert.strictEqual(resolved, '/nope/missing.socket');
   });
 });

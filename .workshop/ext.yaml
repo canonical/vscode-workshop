@@ -7,4 +7,9 @@ sdks:
     plugs:
       desktop:
         interface: desktop
-  - name: project-vscode-test-extension
+  - name: project-test-deps
+actions:
+  build: |
+    npx @vscode/vsce package
+  test: |
+    npm run test

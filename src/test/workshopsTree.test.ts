@@ -5,13 +5,13 @@ import * as fs from 'fs';
 import * as vscode from 'vscode';
 
 import { WorkshopClient } from '../api/client';
-import { AVAILABLE_CONTEXT, WorkshopsTreeProvider } from '../ui/workshopsTree';
+import { UNAVAILABLE_CONTEXT, WorkshopsTreeProvider } from '../ui/workshopsTree';
 
 /**
  * Run `body` with `vscode.workspace.workspaceFolders` temporarily replaced and
  * `vscode.commands.executeCommand` spying on `setContext` calls, restoring both
  * afterwards. Returns the last value `setContext` was given for
- * {@link AVAILABLE_CONTEXT}.
+ * {@link UNAVAILABLE_CONTEXT}.
  */
 async function withStubs(
   folders: readonly vscode.WorkspaceFolder[] | undefined,
@@ -30,7 +30,7 @@ async function withStubs(
   let available: boolean | undefined;
   (vscode.commands as { executeCommand: typeof vscode.commands.executeCommand }).executeCommand =
     ((command: string, ...args: unknown[]) => {
-      if (command === 'setContext' && args[0] === AVAILABLE_CONTEXT) {
+      if (command === 'setContext' && args[0] === UNAVAILABLE_CONTEXT) {
         available = args[1] as boolean;
         return Promise.resolve(undefined);
       }
@@ -59,13 +59,13 @@ function fakeFolder(fsPath: string): vscode.WorkspaceFolder {
 }
 
 suite('WorkshopsTreeProvider availability', () => {
-  test('sets workshop.available=false and shows no items when daemon is unreachable', async () => {
+  test('sets workshop.unavailable=true and shows no items when daemon is unreachable', async () => {
     let items: vscode.TreeItem[] = [];
-    const available = await withStubs([fakeFolder('/repo')], async (provider) => {
+    const unavailable = await withStubs([fakeFolder('/repo')], async (provider) => {
       items = await provider.getChildren();
     });
 
-    assert.strictEqual(available, false);
+    assert.strictEqual(unavailable, true);
     assert.deepStrictEqual(items, []);
   });
 });

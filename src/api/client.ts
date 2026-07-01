@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import * as http from 'http';
 import * as path from 'path';
 
@@ -81,17 +82,37 @@ export class WorkshopUnavailableError extends Error {
 /** Socket errors that mean "the daemon isn't reachable" rather than a bug. */
 const UNAVAILABLE_CODES = new Set(['ENOENT', 'ECONNREFUSED', 'EACCES', 'ECONNRESET']);
 
+/** The daemon socket path used by a system (non-snap) install. */
+export const DEFAULT_SOCKET_PATH = '/var/lib/workshop/workshop.socket';
+
+/** The daemon socket path used by the `workshop` snap. */
+export const SNAP_SOCKET_PATH = '/var/snap/workshop/common/workshop/workshop.socket';
+
 /**
- * Resolve the daemon's socket path the same way the Workshop CLI does:
- * `$WORKSHOP_SOCKET`, else `$WORKSHOP/workshop.socket`, else the system default
- * `/var/lib/workshop/workshop.socket`.
+ * Ordered list of socket paths to probe when none is configured explicitly.
+ * `$WORKSHOP_SOCKET` and `$WORKSHOP` (if set) take precedence, followed by the
+ * snap location and the system default.
+ */
+export function socketPathCandidates(env: NodeJS.ProcessEnv = process.env): string[] {
+  const candidates: string[] = [];
+  if (env.WORKSHOP_SOCKET) {
+    candidates.push(env.WORKSHOP_SOCKET);
+  }
+  if (env.WORKSHOP) {
+    candidates.push(path.join(env.WORKSHOP, 'workshop.socket'));
+  }
+  candidates.push(SNAP_SOCKET_PATH, DEFAULT_SOCKET_PATH);
+  return [...new Set(candidates)];
+}
+
+/**
+ * Resolve the daemon's socket path: return the first {@link socketPathCandidates}
+ * entry that exists on disk, falling back to the first candidate so callers
+ * still get a sensible path (and a meaningful error) when none is present.
  */
 export function defaultSocketPath(env: NodeJS.ProcessEnv = process.env): string {
-  if (env.WORKSHOP_SOCKET) {
-    return env.WORKSHOP_SOCKET;
-  }
-  const base = env.WORKSHOP || '/var/lib/workshop';
-  return path.join(base, 'workshop.socket');
+  const candidates = socketPathCandidates(env);
+  return candidates.find((p) => fs.existsSync(p)) ?? candidates[0];
 }
 
 export interface WorkshopClientOptions {
@@ -108,6 +129,11 @@ export class WorkshopClient {
   constructor(options: WorkshopClientOptions = {}) {
     this.socketPath = options.socketPath ?? defaultSocketPath();
     this.timeoutMs = options.timeoutMs ?? 30_000;
+  }
+
+  /** The Unix socket path this client talks to. */
+  get socket(): string {
+    return this.socketPath;
   }
 
   /** List every project the daemon currently knows about. */
