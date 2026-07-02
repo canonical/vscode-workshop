@@ -2,14 +2,21 @@
   "name": "workshop",
   "displayName": "Workshop",
   "description": "Use workshops as a development environment in VS Code",
+  "publisher": "canonical",
   "version": "0.1.0",
-    "repository": {
+  "repository": {
     "type": "git",
     "url": "https://github.com/canonical/vscode-workshop.git"
   },
   "engines": {
     "vscode": "^1.90.0"
   },
+  "extensionKind": [
+    "ui"
+  ],
+  "extensionDependencies": [
+    "ms-vscode-remote.remote-ssh"
+  ],
   "categories": [
     "Other"
   ],
@@ -48,6 +55,18 @@
         "command": "workshop.install",
         "title": "Install Workshop from the Snap Store",
         "category": "Workshop"
+      },
+      {
+        "command": "workshop.reopenInWorkshop",
+        "title": "Reopen in Workshop",
+        "category": "Workshop",
+        "icon": "$(remote)"
+      },
+      {
+        "command": "workshop.reopenLocally",
+        "title": "Reopen Locally",
+        "category": "Workshop",
+        "icon": "$(home)"
       }
     ],
     "viewsWelcome": [
@@ -63,6 +82,25 @@
           "command": "workshop.refresh",
           "when": "view == workshop.workshops",
           "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "workshop.reopenInWorkshop",
+          "when": "view == workshop.workshops && viewItem == workshop",
+          "group": "inline"
+        },
+        {
+          "command": "workshop.reopenLocally",
+          "when": "view == workshop.workshops && viewItem == workshop-active",
+          "group": "inline"
+        }
+      ],
+      "statusBar/remoteIndicator": [
+        {
+          "command": "workshop.reopenLocally",
+          "when": "remoteName == 'ssh-remote'",
+          "group": "remote_10_ssh-remote_workshop"
         }
       ]
     }
@@ -85,6 +123,7 @@
     "@types/mocha": "^10.0.10",
     "@types/node": "24.x",
     "@types/vscode": "^1.90.0",
+    "@types/ws": "^8.18.1",
     "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^3.0.0",
     "esbuild": "^0.28.1",
@@ -96,5 +135,8 @@
   "overrides": {
     "diff": "^8.0.4",
     "serialize-javascript": "^7.0.6"
+  },
+  "dependencies": {
+    "ws": "^8.21.0"
   }
 }

@@ -27,6 +27,12 @@ export interface WorkshopInfo {
   base?: string;
   status: string;
   notes?: string[];
+  /**
+   * The workshop's routable hostname on the `.wp` domain. Sent with
+   * `omitempty`, so it is present only once the workshop is running and has a
+   * network identity.
+   */
+  hostname?: string;
 }
 
 /**
@@ -44,11 +50,32 @@ export interface WorkshopsResponse {
   files?: WorkshopFile[];
 }
 
+/** A single task within a {@link Change}. */
+export interface ChangeTask {
+  id: string;
+  kind: string;
+  status: string;
+  /** Kind-specific data (e.g. an `exec` task carries `exit-code`). */
+  data?: Record<string, unknown>;
+}
+
+/** A daemon change: the async unit of work returned by mutating endpoints. */
+export interface Change {
+  id: string;
+  kind: string;
+  status: string;
+  ready: boolean;
+  err?: string;
+  tasks?: ChangeTask[];
+}
+
 /** The daemon's response envelope. `result` shape depends on the endpoint. */
 interface ResponseEnvelope {
   type: string;
   'status-code'?: number;
   status?: string;
+  /** For async responses, the id of the change to wait on. */
+  change?: string;
   result?: unknown;
 }
 
@@ -163,8 +190,80 @@ export class WorkshopClient {
     return (result ?? {}) as WorkshopsResponse;
   }
 
+  /**
+   * POST to an async endpoint and return the id of the change to wait on plus
+   * the (endpoint-specific) result payload — e.g. an `exec`'s `task-id`.
+   */
+  async postAsync(
+    urlPath: string,
+    body?: unknown,
+  ): Promise<{ change: string; result: unknown }> {
+    const envelope = await this.send('POST', urlPath, body);
+    if (!envelope.change) {
+      throw new WorkshopApiError('expected an async response with a change id', 0);
+    }
+    return { change: envelope.change, result: envelope.result };
+  }
+
+  /**
+   * Fetch the current state of a single workshop.
+   * `GET /v1/projects/<projectId>/workshops/<name>`
+   */
+  async getWorkshop(projectId: string, name: string): Promise<WorkshopInfo> {
+    const result = await this.request(
+      'GET',
+      `/v1/projects/${encodeURIComponent(projectId)}/workshops/${encodeURIComponent(name)}`,
+    );
+    // The endpoint wraps WorkshopInfo in a Workshop struct with an extra `path`
+    // field; WorkshopInfo is embedded so all its fields are top-level.
+    return result as WorkshopInfo;
+  }
+
+  /**
+   * Trigger a lifecycle action (`start`, `launch`, or `stop`) on one or more
+   * workshops and wait for the change to complete.
+   *
+   * `POST /v1/projects/<id>/workshops` with `{ names, action }` returns an
+   * async change; we wait on it here so callers get back control only once the
+   * operation is fully done.
+   */
+  async workshopAction(
+    projectId: string,
+    names: string[],
+    action: 'start' | 'launch' | 'stop',
+  ): Promise<Change> {
+    const { change } = await this.postAsync(
+      `/v1/projects/${encodeURIComponent(projectId)}/workshops`,
+      { names, action },
+    );
+    return this.waitChange(change);
+  }
+
+  /** Wait for a change to finish and return it, throwing if it errored. */
+  async waitChange(changeId: string): Promise<Change> {
+    const result = await this.request(
+      'GET',
+      `/v1/changes/${encodeURIComponent(changeId)}/wait`,
+    );
+    const change = result as Change;
+    if (change.err) {
+      throw new WorkshopApiError(change.err, 0);
+    }
+    return change;
+  }
+
   /** Issue a request over the Unix socket and unwrap the response envelope. */
   private async request(method: string, urlPath: string, body?: unknown): Promise<unknown> {
+    const envelope = await this.send(method, urlPath, body);
+    return envelope.result;
+  }
+
+  /** Issue a request over the Unix socket and return the full envelope. */
+  private async send(
+    method: string,
+    urlPath: string,
+    body?: unknown,
+  ): Promise<ResponseEnvelope> {
     const payload = body === undefined ? undefined : Buffer.from(JSON.stringify(body));
 
     const res = await new Promise<http.IncomingMessage>((resolve, reject) => {
@@ -221,7 +320,7 @@ export class WorkshopClient {
       throw new WorkshopApiError(message, status);
     }
 
-    return envelope.result;
+    return envelope;
   }
 }
 

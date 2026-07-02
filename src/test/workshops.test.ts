@@ -1,14 +1,19 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
 
-import { mergeWorkshops, normalizeStatus } from '../api/workshops';
+import { mergeWorkshops, normalizeStatus, reopenAction } from '../api/workshops';
 import { statusIcon } from '../ui/statusIcon';
 
 suite('workshops model', () => {
   test('normalizeStatus maps known statuses case-insensitively', () => {
-    assert.strictEqual(normalizeStatus('ready'), 'Ready');
-    assert.strictEqual(normalizeStatus('STOPPED'), 'Stopped');
+    assert.strictEqual(normalizeStatus('ready'), 'On');
+    assert.strictEqual(normalizeStatus('READY'), 'On');
+    assert.strictEqual(normalizeStatus('stopped'), 'Off');
+    assert.strictEqual(normalizeStatus('STOPPED'), 'Off');
+    assert.strictEqual(normalizeStatus('off'), 'Off');
     assert.strictEqual(normalizeStatus('Waiting'), 'Waiting');
+    assert.strictEqual(normalizeStatus('pending'), 'Pending');
+    assert.strictEqual(normalizeStatus('error'), 'Error');
     assert.strictEqual(normalizeStatus('bogus'), 'Unknown');
     assert.strictEqual(normalizeStatus(undefined), 'Unknown');
   });
@@ -16,7 +21,7 @@ suite('workshops model', () => {
   test('mergeWorkshops combines live workshops and definition files', () => {
     const merged = mergeWorkshops({
       workshops: [
-        { 'project-id': 'p', name: 'beta', status: 'ready' },
+        { 'project-id': 'p', name: 'beta', status: 'ready', hostname: 'beta.p.wp' },
         { 'project-id': 'p', name: 'alpha', status: 'waiting' },
       ],
       files: [
@@ -28,9 +33,23 @@ suite('workshops model', () => {
     });
 
     assert.deepStrictEqual(merged, [
-      { name: 'alpha', status: 'Waiting' },
-      { name: 'beta', status: 'Ready' },
-      { name: 'gamma', status: 'Off' },
+      { name: 'alpha', status: 'Waiting', rawStatus: 'waiting', hostname: undefined, definitionPath: '/x/alpha.yaml' },
+      { name: 'beta', status: 'On', rawStatus: 'ready', hostname: 'beta.p.wp', definitionPath: undefined },
+      { name: 'gamma', status: 'Off', definitionPath: '/x/gamma.yaml' },
+    ]);
+  });
+
+  test('mergeWorkshops keeps stopped and off distinct in rawStatus', () => {
+    const merged = mergeWorkshops({
+      workshops: [
+        { 'project-id': 'p', name: 'stopped-one', status: 'stopped' },
+        { 'project-id': 'p', name: 'off-one', status: 'off' },
+      ],
+    });
+
+    assert.deepStrictEqual(merged, [
+      { name: 'off-one', status: 'Off', rawStatus: 'off', hostname: undefined, definitionPath: undefined },
+      { name: 'stopped-one', status: 'Off', rawStatus: 'stopped', hostname: undefined, definitionPath: undefined },
     ]);
   });
 
@@ -39,12 +58,32 @@ suite('workshops model', () => {
   });
 });
 
+suite('reopenAction', () => {
+  test('running workshops connect directly', () => {
+    assert.strictEqual(reopenAction({ name: 'a', status: 'On', rawStatus: 'ready' }), 'connect');
+    assert.strictEqual(
+      reopenAction({ name: 'a', status: 'Waiting', rawStatus: 'waiting' }),
+      'connect',
+    );
+  });
+
+  test('built-but-stopped workshops start', () => {
+    assert.strictEqual(reopenAction({ name: 'a', status: 'Off', rawStatus: 'stopped' }), 'start');
+    assert.strictEqual(reopenAction({ name: 'a', status: 'Off', rawStatus: 'STOPPED' }), 'start');
+  });
+
+  test('off and definition-only workshops launch', () => {
+    assert.strictEqual(reopenAction({ name: 'a', status: 'Off', rawStatus: 'off' }), 'launch');
+    // Definition-only: no rawStatus.
+    assert.strictEqual(reopenAction({ name: 'a', status: 'Off' }), 'launch');
+  });
+});
+
 suite('statusIcon mapping', () => {
   const cases: Array<[Parameters<typeof statusIcon>[0], string, string | undefined]> = [
-    ['Ready', 'pass', 'charts.green'],
+    ['On', 'pass', 'disabledForeground'],
     ['Waiting', 'watch', 'charts.yellow'],
     ['Error', 'error', 'charts.red'],
-    ['Stopped', 'circle-outline', 'descriptionForeground'],
     ['Off', 'circle-large-outline', 'disabledForeground'],
     ['Pending', 'loading~spin', undefined],
     ['Unknown', 'circle-large-outline', 'descriptionForeground'],

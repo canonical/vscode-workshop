@@ -1,34 +1,78 @@
 import { WorkshopClient, WorkshopsResponse } from './client';
 
 /**
- * Workshop lifecycle states, matching the statuses surfaced by the old
- * implementation (see `old/src/types.ts`).
+ * Workshop lifecycle states.
  *
- * - `Off`      — a definition exists on disk but there is no container.
+ * - `On`       — the workshop is up and reachable (daemon status: `ready`).
+ * - `Off`      — no running container (daemon status: `off`, `stopped`, or definition-only).
  * - `Pending`  — a transient state while a workshop is being launched.
- * - `Ready`    — the workshop is up and reachable.
- * - `Stopped`  — the container exists but is not running.
  * - `Waiting`  — paused mid-change, awaiting user input.
  * - `Error`    — the workshop failed.
  * - `Unknown`  — a status we don't recognise.
  */
-export type Status = 'Off' | 'Pending' | 'Ready' | 'Stopped' | 'Waiting' | 'Error' | 'Unknown';
-
-const KNOWN: Status[] = ['Off', 'Pending', 'Ready', 'Stopped', 'Waiting', 'Error'];
+export type Status = 'On' | 'Off' | 'Pending' | 'Waiting' | 'Error' | 'Unknown';
 
 /** Coerce a raw status string from the daemon into a known {@link Status}. */
 export function normalizeStatus(raw: string | undefined): Status {
-  if (!raw) {
-    return 'Unknown';
+  switch (raw?.toLowerCase()) {
+    case 'ready':   return 'On';
+    case 'off':     return 'Off';
+    case 'stopped': return 'Off';
+    case 'pending': return 'Pending';
+    case 'waiting': return 'Waiting';
+    case 'error':   return 'Error';
+    default:        return 'Unknown';
   }
-  const lc = raw.toLowerCase();
-  return KNOWN.find((s) => s.toLowerCase() === lc) ?? 'Unknown';
 }
 
 /** A workshop to display: its name and resolved status. */
 export interface Workshop {
   name: string;
   status: Status;
+  /**
+   * The raw daemon status string (e.g. `ready`, `stopped`, `off`). Undefined
+   * for definition-only workshops that have never been launched. Kept
+   * alongside {@link status} because the display status collapses `stopped`
+   * and `off` into `Off`, but the reopen action needs to tell them apart.
+   */
+  rawStatus?: string;
+  /**
+   * The workshop's routable hostname. Present only when the workshop is
+   * running (see {@link WorkshopInfo.hostname}).
+   */
+  hostname?: string;
+  /**
+   * Absolute path to the definition file on the local filesystem, as returned
+   * by the daemon's `files` list. May be any of:
+   *   - `.workshop/<name>.yaml`
+   *   - `.workshop.yaml` (single-workshop project)
+   *   - `workshop.yaml` (single-workshop project, root level)
+   */
+  definitionPath?: string;
+}
+
+/**
+ * What {@link reopenInWorkshop} must do to bring a workshop online before
+ * connecting:
+ *
+ * - `connect` — already running; connect directly.
+ * - `start`   — built but stopped; issue the `start` action first.
+ * - `launch`  — never built (raw `off` or definition-only); `launch` first.
+ */
+export type ReopenAction = 'connect' | 'start' | 'launch';
+
+/**
+ * Decide how to reopen into a workshop from its model. Derived from the raw
+ * daemon status and origin, not the collapsed display {@link Status}.
+ */
+export function reopenAction(workshop: Workshop): ReopenAction {
+  if (workshop.status === 'On' || workshop.status === 'Waiting') {
+    return 'connect';
+  }
+  if (workshop.rawStatus?.toLowerCase() === 'stopped') {
+    return 'start';
+  }
+  return 'launch'; // raw 'off' or definition-only
 }
 
 /**
@@ -40,10 +84,17 @@ export function mergeWorkshops(response: WorkshopsResponse): Workshop[] {
   const byName = new Map<string, Workshop>();
 
   for (const file of response.files ?? []) {
-    byName.set(file.name, { name: file.name, status: 'Off' });
+    byName.set(file.name, { name: file.name, status: 'Off', definitionPath: file.path });
   }
   for (const workshop of response.workshops ?? []) {
-    byName.set(workshop.name, { name: workshop.name, status: normalizeStatus(workshop.status) });
+    byName.set(workshop.name, {
+      ...byName.get(workshop.name), // preserve definitionPath if already set from files
+      name: workshop.name,
+      status: normalizeStatus(workshop.status),
+      rawStatus: workshop.status,
+      hostname: workshop.hostname,
+      definitionPath: byName.get(workshop.name)?.definitionPath,
+    });
   }
 
   return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
