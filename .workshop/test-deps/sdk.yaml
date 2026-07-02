@@ -1,0 +1,4 @@
+name: test-deps
+plugs:
+  desktop:
+    interface: desktop

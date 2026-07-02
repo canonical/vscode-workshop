@@ -13,7 +13,7 @@ This project uses Workshop for its own development environment.
 
 ```bash
 workshop launch
-workshop connect ext/vscode-remote:desktop
+workshop connect ext/test-deps:desktop
 ```
 
 Then open this project in VS Code and press `F5` to launch the extension in a new Extension Development Host window.

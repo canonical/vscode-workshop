@@ -3,10 +3,6 @@ base: ubuntu@24.04
 sdks:
   - name: node
     channel: "24"
-  - name: vscode-remote
-    plugs:
-      desktop:
-        interface: desktop
   - name: project-test-deps
 actions:
   build: |
