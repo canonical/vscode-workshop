@@ -65,7 +65,8 @@ function buildHostBlock(hostname: string, identityFile: string): string {
     `    User workshop`,
     `    IdentityFile ${identityFile}`,
     `    IdentitiesOnly yes`,
-    `    StrictHostKeyChecking accept-new`,
+    `    StrictHostKeyChecking no`,
+    `    UserKnownHostsFile /dev/null`,
     '',
   ].join('\n');
 }

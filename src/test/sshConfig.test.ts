@@ -22,7 +22,8 @@ suite('upsertHostBlock', () => {
     assert.ok(content.includes('User workshop'));
     assert.ok(content.includes('IdentityFile /storage/id_ed25519'));
     assert.ok(content.includes('IdentitiesOnly yes'));
-    assert.ok(content.includes('StrictHostKeyChecking accept-new'));
+    assert.ok(content.includes('StrictHostKeyChecking no'));
+    assert.ok(content.includes('UserKnownHostsFile /dev/null'));
   });
 
   test('is idempotent: second call with same hostname produces one block', () => {

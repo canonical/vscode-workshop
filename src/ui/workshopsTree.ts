@@ -18,11 +18,11 @@ export const UNAVAILABLE_CONTEXT = 'workshop.unavailable';
 
 /** A single workshop row in the tree. */
 export class WorkshopItem extends vscode.TreeItem {
-  constructor(readonly workshop: Workshop) {
+  constructor(readonly workshop: Workshop, connected = false) {
     super(workshop.name, vscode.TreeItemCollapsibleState.None);
-    this.description = workshop.status;
+    this.description = connected ? `${workshop.status} \u2022 active` : workshop.status;
     this.iconPath = statusIcon(workshop.status);
-    this.contextValue = 'workshop';
+    this.contextValue = connected ? 'workshop-connected' : 'workshop';
   }
 }
 
@@ -43,6 +43,7 @@ export class WorkshopsTreeProvider
 
   private cachedItems: Workshop[] = [];
   private isUnavailable = false;
+  private activeWorkshopName: string | undefined;
   private readonly subscriptions: vscode.Disposable[] = [];
 
   constructor(
@@ -84,7 +85,16 @@ export class WorkshopsTreeProvider
     if (this.isUnavailable) {
       return [];
     }
-    return this.cachedItems.map((w) => new WorkshopItem(w));
+    return this.cachedItems.map((w) => {
+      const connected = w.name === this.activeWorkshopName;
+      return new WorkshopItem(w, connected);
+    });
+  }
+
+  /** Update which workshop the current window is connected to. */
+  setActiveWorkshop(name: string | undefined): void {
+    this.activeWorkshopName = name;
+    this.emitter.fire();
   }
 
   private setUnavailable(unavailable: boolean): Thenable<unknown> {
