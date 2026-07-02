@@ -27,12 +27,19 @@ export class WorkshopDecorationProvider implements vscode.FileDecorationProvider
   private readonly emitter = new vscode.EventEmitter<vscode.Uri[]>();
   readonly onDidChangeFileDecorations = this.emitter.event;
   private activeUri: vscode.Uri | undefined;
+  private activeColor: vscode.ThemeColor | undefined;
 
-  setActive(name: string | undefined): void {
+  setActive(workshop: Workshop | undefined): void {
     const previous = this.activeUri;
-    this.activeUri = name
-      ? vscode.Uri.from({ scheme: WORKSHOP_ITEM_SCHEME, path: `/${name}` })
-      : undefined;
+    if (workshop) {
+      this.activeUri = vscode.Uri.from({ scheme: WORKSHOP_ITEM_SCHEME, path: `/${workshop.name}` });
+      this.activeColor = workshop.status === 'Waiting'
+        ? new vscode.ThemeColor('charts.yellow')
+        : new vscode.ThemeColor('charts.green');
+    } else {
+      this.activeUri = undefined;
+      this.activeColor = undefined;
+    }
     const toFire = [previous, this.activeUri].filter((u): u is vscode.Uri => u !== undefined);
     if (toFire.length > 0) { this.emitter.fire(toFire); }
   }
@@ -40,11 +47,7 @@ export class WorkshopDecorationProvider implements vscode.FileDecorationProvider
   provideFileDecoration(uri: vscode.Uri): vscode.FileDecoration | undefined {
     if (uri.scheme !== WORKSHOP_ITEM_SCHEME) { return undefined; }
     if (this.activeUri && uri.toString() === this.activeUri.toString()) {
-      return new vscode.FileDecoration(
-        undefined,
-        undefined,
-        new vscode.ThemeColor('charts.green'),
-      );
+      return new vscode.FileDecoration(undefined, undefined, this.activeColor);
     }
     return undefined;
   }
@@ -55,8 +58,8 @@ export class WorkshopItem extends vscode.TreeItem {
   constructor(readonly workshop: Workshop, active = false) {
     super(workshop.name, vscode.TreeItemCollapsibleState.None);
     this.resourceUri = vscode.Uri.from({ scheme: WORKSHOP_ITEM_SCHEME, path: `/${workshop.name}` });
-    this.description = active ? 'Active' : workshop.status;
-    this.iconPath = active
+    this.description = workshop.status;
+    this.iconPath = active && workshop.status !== 'Waiting'
       ? new vscode.ThemeIcon('pass-filled', new vscode.ThemeColor('charts.green'))
       : statusIcon(workshop.status);
     if (active) {
@@ -101,6 +104,9 @@ export class WorkshopsTreeProvider
         this.isUnavailable = false;
         void this.setUnavailable(false);
         this.log?.info(`Updated ${workshops.length} workshop(s) from poller`);
+        // Re-apply decoration in case the active workshop's status changed.
+        const active = workshops.find((w) => w.name === this.activeWorkshopName);
+        if (active) { this.decorationProvider.setActive(active); }
         this.emitter.fire();
       }),
       poller.onDidError((err) => {
@@ -139,7 +145,8 @@ export class WorkshopsTreeProvider
   /** Update which workshop the current window is connected to. */
   setActiveWorkshop(name: string | undefined): void {
     this.activeWorkshopName = name;
-    this.decorationProvider.setActive(name);
+    const active = name ? this.cachedItems.find((w) => w.name === name) : undefined;
+    this.decorationProvider.setActive(active);
     this.emitter.fire();
   }
 
