@@ -31,11 +31,12 @@ export function activate(context: vscode.ExtensionContext) {
   const provider = new WorkshopsTreeProvider(poller, log);
 
   // If connected via Remote-SSH to a workshop, tell the tree provider which
-  // workshop is active so it can highlight that item.
+  // workshop is active so it can highlight that item, and switch to Explorer.
   if (vscode.env.remoteName === 'ssh-remote') {
     const activeWorkshop = context.globalState.get<string>('workshop.activeWorkshopName');
     if (activeWorkshop) {
       provider.setActiveWorkshop(activeWorkshop);
+      void vscode.commands.executeCommand('workbench.view.explorer');
     }
   }
 
