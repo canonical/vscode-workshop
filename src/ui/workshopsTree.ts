@@ -104,7 +104,7 @@ export class WorkshopsTreeProvider
         this.cachedItems = workshops;
         this.isUnavailable = false;
         void this.setUnavailable(false);
-        this.log?.info(`Updated ${workshops.length} workshop(s) from poller`);
+        this.log?.debug(`Updated ${workshops.length} workshop(s) from poller`);
         // Re-apply decoration in case the active workshop's status changed.
         const active = workshops.find((w) => w.name === this.activeWorkshopName);
         if (active) { this.decorationProvider.setActive(active); }

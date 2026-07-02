@@ -41,6 +41,14 @@ export interface Workshop {
    * running (see {@link WorkshopInfo.hostname}).
    */
   hostname?: string;
+  /**
+   * Absolute path to the definition file on the local filesystem, as returned
+   * by the daemon's `files` list. May be any of:
+   *   - `.workshop/<name>.yaml`
+   *   - `.workshop.yaml` (single-workshop project)
+   *   - `workshop.yaml` (single-workshop project, root level)
+   */
+  definitionPath?: string;
 }
 
 /**
@@ -76,14 +84,16 @@ export function mergeWorkshops(response: WorkshopsResponse): Workshop[] {
   const byName = new Map<string, Workshop>();
 
   for (const file of response.files ?? []) {
-    byName.set(file.name, { name: file.name, status: 'Off' });
+    byName.set(file.name, { name: file.name, status: 'Off', definitionPath: file.path });
   }
   for (const workshop of response.workshops ?? []) {
     byName.set(workshop.name, {
+      ...byName.get(workshop.name), // preserve definitionPath if already set from files
       name: workshop.name,
       status: normalizeStatus(workshop.status),
       rawStatus: workshop.status,
       hostname: workshop.hostname,
+      definitionPath: byName.get(workshop.name)?.definitionPath,
     });
   }
 

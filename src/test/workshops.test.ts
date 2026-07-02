@@ -33,9 +33,9 @@ suite('workshops model', () => {
     });
 
     assert.deepStrictEqual(merged, [
-      { name: 'alpha', status: 'Waiting', rawStatus: 'waiting', hostname: undefined },
-      { name: 'beta', status: 'On', rawStatus: 'ready', hostname: 'beta.p.wp' },
-      { name: 'gamma', status: 'Off' },
+      { name: 'alpha', status: 'Waiting', rawStatus: 'waiting', hostname: undefined, definitionPath: '/x/alpha.yaml' },
+      { name: 'beta', status: 'On', rawStatus: 'ready', hostname: 'beta.p.wp', definitionPath: undefined },
+      { name: 'gamma', status: 'Off', definitionPath: '/x/gamma.yaml' },
     ]);
   });
 
@@ -48,8 +48,8 @@ suite('workshops model', () => {
     });
 
     assert.deepStrictEqual(merged, [
-      { name: 'off-one', status: 'Off', rawStatus: 'off', hostname: undefined },
-      { name: 'stopped-one', status: 'Off', rawStatus: 'stopped', hostname: undefined },
+      { name: 'off-one', status: 'Off', rawStatus: 'off', hostname: undefined, definitionPath: undefined },
+      { name: 'stopped-one', status: 'Off', rawStatus: 'stopped', hostname: undefined, definitionPath: undefined },
     ]);
   });
 

@@ -69,8 +69,8 @@ suite('WorkshopClient over a fake workshopd socket', () => {
     const workshops = await listProjectWorkshops(client, '/repo');
 
     assert.deepStrictEqual(workshops, [
-      { name: 'db', status: 'Off' },
-      { name: 'web', status: 'On', rawStatus: 'ready', hostname: undefined },
+      { name: 'db', status: 'Off', definitionPath: '/repo/.workshop/db.yaml' },
+      { name: 'web', status: 'On', rawStatus: 'ready', hostname: undefined, definitionPath: '/repo/.workshop/web.yaml' },
     ]);
   });
 

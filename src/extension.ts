@@ -5,6 +5,7 @@ import { WorkshopClient } from './api/client';
 import { WorkshopPoller } from './poller';
 import { listProjectWorkshops, Workshop } from './api/workshops';
 import { UNAVAILABLE_CONTEXT, WorkshopsTreeProvider, WorkshopItem } from './ui/workshopsTree';
+import { LogsView } from './ui/logsView';
 import { reopenInWorkshop } from './remote/reopen';
 
 // This method is called when your extension is activated
@@ -13,6 +14,9 @@ export function activate(context: vscode.ExtensionContext) {
   const log = vscode.window.createOutputChannel('Workshop', { log: true });
   const client = new WorkshopClient();
   log.info(`Workshop extension activated; using daemon socket ${client.socket}`);
+
+  const logsView = new LogsView();
+  logsView.register(context);
 
   const poller = new WorkshopPoller<Workshop[]>(() => {
     const folder = vscode.workspace.workspaceFolders?.[0];
@@ -83,7 +87,37 @@ export function activate(context: vscode.ExtensionContext) {
       }
       void context.globalState.update('workshop.localProjectPath', projectPath);
       void context.globalState.update('workshop.activeWorkshopName', item.workshop.name);
-      void reopenInWorkshop(client, projectPath, item.workshop, context.globalStorageUri.fsPath);
+      reopenInWorkshop(client, projectPath, item.workshop, context.globalStorageUri.fsPath)
+        .catch((err: unknown) => {
+          const message = err instanceof Error ? err.message : String(err);
+          log.error(`Failed to reopen in workshop ${item.workshop.name}: ${message}`);
+          // Open the workshop definition in column One, then the error log
+          // beside it in column Two — same layout as the old extension.
+          void (async () => {
+            let anchored = false;
+            const defPath = item.workshop.definitionPath;
+            if (defPath) {
+              try {
+                await vscode.window.showTextDocument(vscode.Uri.file(defPath), {
+                  preview: false,
+                  viewColumn: vscode.ViewColumn.One,
+                });
+                anchored = true;
+              } catch {
+                // Definition file not readable — skip it.
+              }
+            }
+            if (anchored) {
+              await logsView.openLog(`${item.workshop.name} — error`, message);
+            } else {
+              await vscode.commands.executeCommand('vscode.setEditorLayout', {
+                orientation: 0,
+                groups: [{}, {}],
+              });
+              await logsView.openLog(`${item.workshop.name} — error`, message, vscode.ViewColumn.Two);
+            }
+          })();
+        });
     }),
     vscode.commands.registerCommand('workshop.reopenLocally', () => {
       void context.globalState.update('workshop.activeWorkshopName', undefined);
