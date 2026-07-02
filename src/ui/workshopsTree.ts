@@ -16,14 +16,51 @@ import { Workshop } from '../api/workshops';
  */
 export const UNAVAILABLE_CONTEXT = 'workshop.unavailable';
 
+/** URI scheme used to key file decorations for workshop tree items. */
+const WORKSHOP_ITEM_SCHEME = 'workshop-item';
+
+/**
+ * Provides a coloured label decoration for the active workshop tree item.
+ * Register with {@link vscode.window.registerFileDecorationProvider}.
+ */
+export class WorkshopDecorationProvider implements vscode.FileDecorationProvider {
+  private readonly emitter = new vscode.EventEmitter<vscode.Uri[]>();
+  readonly onDidChangeFileDecorations = this.emitter.event;
+  private activeUri: vscode.Uri | undefined;
+
+  setActive(name: string | undefined): void {
+    const previous = this.activeUri;
+    this.activeUri = name
+      ? vscode.Uri.from({ scheme: WORKSHOP_ITEM_SCHEME, path: `/${name}` })
+      : undefined;
+    const toFire = [previous, this.activeUri].filter((u): u is vscode.Uri => u !== undefined);
+    if (toFire.length > 0) { this.emitter.fire(toFire); }
+  }
+
+  provideFileDecoration(uri: vscode.Uri): vscode.FileDecoration | undefined {
+    if (uri.scheme !== WORKSHOP_ITEM_SCHEME) { return undefined; }
+    if (this.activeUri && uri.toString() === this.activeUri.toString()) {
+      return new vscode.FileDecoration(
+        undefined,
+        undefined,
+        new vscode.ThemeColor('charts.green'),
+      );
+    }
+    return undefined;
+  }
+}
+
 /** A single workshop row in the tree. */
 export class WorkshopItem extends vscode.TreeItem {
-  constructor(readonly workshop: Workshop, connected = false) {
+  constructor(readonly workshop: Workshop, active = false) {
     super(workshop.name, vscode.TreeItemCollapsibleState.None);
-    this.description = connected ? `${workshop.status} \u2022 active` : workshop.status;
-    this.iconPath = statusIcon(workshop.status);
-    if (connected) {
-      this.contextValue = 'workshop-connected';
+    this.resourceUri = vscode.Uri.from({ scheme: WORKSHOP_ITEM_SCHEME, path: `/${workshop.name}` });
+    this.description = active ? 'Active' : workshop.status;
+    this.iconPath = active
+      ? new vscode.ThemeIcon('pass-filled', new vscode.ThemeColor('charts.green'))
+      : statusIcon(workshop.status);
+    if (active) {
+      this.contextValue = 'workshop-active';
     } else if (workshop.status === 'Pending') {
       this.contextValue = 'workshop-pending';
     } else {
@@ -51,6 +88,8 @@ export class WorkshopsTreeProvider
   private isUnavailable = false;
   private activeWorkshopName: string | undefined;
   private readonly subscriptions: vscode.Disposable[] = [];
+
+  readonly decorationProvider = new WorkshopDecorationProvider();
 
   constructor(
     poller: WorkshopPoller<Workshop[]>,
@@ -92,14 +131,15 @@ export class WorkshopsTreeProvider
       return [];
     }
     return this.cachedItems.map((w) => {
-      const connected = w.name === this.activeWorkshopName;
-      return new WorkshopItem(w, connected);
+      const active = w.name === this.activeWorkshopName;
+      return new WorkshopItem(w, active);
     });
   }
 
   /** Update which workshop the current window is connected to. */
   setActiveWorkshop(name: string | undefined): void {
     this.activeWorkshopName = name;
+    this.decorationProvider.setActive(name);
     this.emitter.fire();
   }
 

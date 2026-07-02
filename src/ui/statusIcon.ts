@@ -16,7 +16,7 @@ import { Status } from '../api/workshops';
 export function statusIcon(status: Status): vscode.ThemeIcon {
   switch (status) {
     case 'On':
-      return new vscode.ThemeIcon('pass', new vscode.ThemeColor('charts.green'));
+      return new vscode.ThemeIcon('pass', new vscode.ThemeColor('disabledForeground'));
     case 'Waiting':
       return new vscode.ThemeIcon('watch', new vscode.ThemeColor('charts.yellow'));
     case 'Error':
