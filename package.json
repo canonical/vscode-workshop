@@ -92,7 +92,7 @@
         },
         {
           "command": "workshop.reopenLocally",
-          "when": "view == workshop.workshops && viewItem == workshop-connected",
+          "when": "view == workshop.workshops && viewItem == workshop-active",
           "group": "inline"
         }
       ],
