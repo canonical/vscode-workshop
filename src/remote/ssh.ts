@@ -1,4 +1,4 @@
-import * as crypto from 'node:crypto';
+import * as childProcess from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -7,7 +7,7 @@ import { execWorkshop } from '../api/exec';
 
 /** Paths to the local keypair managed by this extension. */
 export interface Keypair {
-  /** Absolute path to the PKCS8 PEM private key file (mode 0600). */
+  /** Absolute path to the OpenSSH private key file (mode 0600). */
   privateKeyPath: string;
   /** The SSH authorized_keys line for the public key. */
   publicKeyLine: string;
@@ -17,24 +17,27 @@ export interface Keypair {
  * Return the workshop-vscode keypair stored under `storageDir`, generating it
  * if it does not exist yet. Idempotent: calling twice returns the same key.
  *
- * The private key is written in PKCS8 PEM format (`-----BEGIN PRIVATE KEY-----`).
- * OpenSSH 7.8+ (2018) reads this natively, and all Ubuntu releases that run
- * workshops ship a much newer OpenSSH. The public key line is the
- * `ssh-ed25519 <base64>` format required by `authorized_keys`.
+ * Keys are generated via `ssh-keygen` so the private key is in OpenSSH native
+ * format (`-----BEGIN OPENSSH PRIVATE KEY-----`), which every OpenSSH client
+ * accepts without question. The companion `.pub` file is the
+ * `ssh-ed25519 <base64> comment` line ready for `authorized_keys`.
  */
 export function ensureKeypair(storageDir: string): Keypair {
   const privateKeyPath = path.join(storageDir, 'id_ed25519');
   const publicKeyPath = path.join(storageDir, 'id_ed25519.pub');
 
   if (!fs.existsSync(privateKeyPath)) {
-    const { privateKey, publicKey } = crypto.generateKeyPairSync('ed25519');
     fs.mkdirSync(storageDir, { recursive: true });
-    fs.writeFileSync(
-      privateKeyPath,
-      privateKey.export({ type: 'pkcs8', format: 'pem' }) as string,
-      { mode: 0o600 },
+    const result = childProcess.spawnSync(
+      'ssh-keygen',
+      ['-t', 'ed25519', '-f', privateKeyPath, '-N', '', '-C', 'workshop-vscode'],
+      { stdio: 'pipe' },
     );
-    fs.writeFileSync(publicKeyPath, toAuthorizedKey(publicKey), { mode: 0o644 });
+    if (result.status !== 0) {
+      throw new Error(
+        `ssh-keygen failed (exit ${result.status}): ${result.stderr?.toString().trim()}`,
+      );
+    }
   }
 
   const publicKeyLine = fs.readFileSync(publicKeyPath, 'utf8').trim();
@@ -84,25 +87,3 @@ grep -qxF "$PUBKEY" /home/workshop/.ssh/authorized_keys 2>/dev/null \\
 chown workshop:workshop /home/workshop/.ssh/authorized_keys
 chmod 600 /home/workshop/.ssh/authorized_keys
 `.trim();
-
-/**
- * Convert a Node.js ed25519 `KeyObject` to the `ssh-ed25519 <base64>` line
- * used in `authorized_keys`.
- *
- * Exports via JWK: the `x` field is the base64url-encoded 32-byte raw public
- * key — no DER parsing or hardcoded byte offsets.
- */
-function toAuthorizedKey(publicKey: crypto.KeyObject): string {
-  const jwk = publicKey.export({ format: 'jwk' }) as { x?: string };
-  if (!jwk.x) {
-    throw new Error('ed25519 JWK missing x parameter');
-  }
-  const rawKey = Buffer.from(jwk.x, 'base64url');
-  const keyType = Buffer.from('ssh-ed25519');
-  const wire = Buffer.allocUnsafe(4 + keyType.length + 4 + rawKey.length);
-  wire.writeUInt32BE(keyType.length, 0);
-  keyType.copy(wire, 4);
-  wire.writeUInt32BE(rawKey.length, 4 + keyType.length);
-  rawKey.copy(wire, 4 + keyType.length + 4);
-  return `ssh-ed25519 ${wire.toString('base64')} workshop-vscode`;
-}
