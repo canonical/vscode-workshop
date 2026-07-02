@@ -2,6 +2,7 @@
   "name": "workshop",
   "displayName": "Workshop",
   "description": "Use workshops as a development environment in VS Code",
+  "publisher": "canonical",
   "version": "0.1.0",
   "repository": {
     "type": "git",
@@ -64,7 +65,8 @@
       {
         "command": "workshop.reopenLocally",
         "title": "Reopen Locally",
-        "category": "Workshop"
+        "category": "Workshop",
+        "icon": "$(home)"
       }
     ],
     "viewsWelcome": [
@@ -86,6 +88,11 @@
         {
           "command": "workshop.reopenInWorkshop",
           "when": "view == workshop.workshops && viewItem == workshop",
+          "group": "inline"
+        },
+        {
+          "command": "workshop.reopenLocally",
+          "when": "view == workshop.workshops && viewItem == workshop-connected",
           "group": "inline"
         }
       ],
