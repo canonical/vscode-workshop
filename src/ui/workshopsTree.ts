@@ -22,7 +22,13 @@ export class WorkshopItem extends vscode.TreeItem {
     super(workshop.name, vscode.TreeItemCollapsibleState.None);
     this.description = connected ? `${workshop.status} \u2022 active` : workshop.status;
     this.iconPath = statusIcon(workshop.status);
-    this.contextValue = connected ? 'workshop-connected' : 'workshop';
+    if (connected) {
+      this.contextValue = 'workshop-connected';
+    } else if (workshop.status === 'Pending' || workshop.status === 'Waiting') {
+      this.contextValue = 'workshop-pending';
+    } else {
+      this.contextValue = 'workshop';
+    }
   }
 }
 

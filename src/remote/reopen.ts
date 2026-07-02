@@ -62,6 +62,9 @@ export async function reopenInWorkshop(
       await vscode.commands.executeCommand('vscode.openFolder', uri, {
         forceReuseWindow: true,
       });
+
+      // Step 6: bring the Explorer into focus so the user lands on a useful view.
+      await vscode.commands.executeCommand('workbench.view.explorer');
     },
   );
 }
