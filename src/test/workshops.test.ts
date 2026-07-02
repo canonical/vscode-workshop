@@ -81,7 +81,7 @@ suite('reopenAction', () => {
 
 suite('statusIcon mapping', () => {
   const cases: Array<[Parameters<typeof statusIcon>[0], string, string | undefined]> = [
-    ['On', 'pass', 'charts.green'],
+    ['On', 'pass', 'disabledForeground'],
     ['Waiting', 'watch', 'charts.yellow'],
     ['Error', 'error', 'charts.red'],
     ['Off', 'circle-large-outline', 'disabledForeground'],
