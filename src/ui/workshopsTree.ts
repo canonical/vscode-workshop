@@ -24,7 +24,7 @@ export class WorkshopItem extends vscode.TreeItem {
     this.iconPath = statusIcon(workshop.status);
     if (connected) {
       this.contextValue = 'workshop-connected';
-    } else if (workshop.status === 'Pending' || workshop.status === 'Waiting') {
+    } else if (workshop.status === 'Pending') {
       this.contextValue = 'workshop-pending';
     } else {
       this.contextValue = 'workshop';
