@@ -58,6 +58,7 @@ export class WorkshopItem extends vscode.TreeItem {
   constructor(readonly workshop: Workshop, active = false) {
     super(workshop.name, vscode.TreeItemCollapsibleState.None);
     this.resourceUri = vscode.Uri.from({ scheme: WORKSHOP_ITEM_SCHEME, path: `/${workshop.name}` });
+    this.tooltip = workshop.name;
     this.description = workshop.status;
     this.iconPath = active && workshop.status !== 'Waiting'
       ? new vscode.ThemeIcon('pass-filled', new vscode.ThemeColor('charts.green'))

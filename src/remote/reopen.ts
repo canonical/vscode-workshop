@@ -37,7 +37,7 @@ export async function reopenInWorkshop(
 
       // Step 1: bring the workshop online if needed.
       if (action === 'start' || action === 'launch') {
-        progress.report({ message: action === 'launch' ? 'Launching…' : 'Starting…' });
+        progress.report({ message: action === 'launch' ? 'launching…' : 'starting…' });
         await client.workshopAction(project.id, [workshop.name], action);
       }
 
@@ -58,6 +58,7 @@ export async function reopenInWorkshop(
       writeHostEntry(hostname, `${storageDir}/id_ed25519`);
 
       // Step 5: reopen in the same window via Remote-SSH.
+      progress.report({ message: 'Opening…' });
       const uri = vscode.Uri.parse(`vscode-remote://ssh-remote+${hostname}/project`);
       await vscode.commands.executeCommand('vscode.openFolder', uri, {
         forceReuseWindow: true,
