@@ -54,7 +54,10 @@ export interface WorkshopsResponse {
 export interface ChangeTask {
   id: string;
   kind: string;
+  summary?: string;
   status: string;
+  /** Verbose log lines emitted by the task (present when `verbose=true`). */
+  log?: string[];
   /** Kind-specific data (e.g. an `exec` task carries `exit-code`). */
   data?: Record<string, unknown>;
 }
@@ -63,6 +66,7 @@ export interface ChangeTask {
 export interface Change {
   id: string;
   kind: string;
+  summary?: string;
   status: string;
   ready: boolean;
   err?: string;
@@ -237,6 +241,23 @@ export class WorkshopClient {
       { names, action },
     );
     return this.waitChange(change);
+  }
+
+  /**
+   * Poll the current state of a change without blocking. Pass `verbose: true`
+   * to include task log lines in the response — mirrors `cli.Change(id, true)`
+   * in the Go CLI.
+   *
+   * Unlike {@link waitChange}, this returns immediately whether or not the
+   * change is still running; callers must loop until `change.ready` is `true`.
+   */
+  async getChange(changeId: string, verbose = false): Promise<Change> {
+    const query = verbose ? '?verbose=true' : '';
+    const result = await this.request(
+      'GET',
+      `/v1/changes/${encodeURIComponent(changeId)}${query}`,
+    );
+    return result as Change;
   }
 
   /** Wait for a change to finish and return it, throwing if it errored. */

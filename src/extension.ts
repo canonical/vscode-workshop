@@ -87,7 +87,19 @@ export function activate(context: vscode.ExtensionContext) {
       }
       void context.globalState.update('workshop.localProjectPath', projectPath);
       void context.globalState.update('workshop.activeWorkshopName', item.workshop.name);
-      reopenInWorkshop(client, projectPath, item.workshop, context.globalStorageUri.fsPath)
+      const logTitle = `${item.workshop.name} — launch`;
+      const logLines: string[] = [];
+      reopenInWorkshop(client, projectPath, item.workshop, {
+        onLog: (lines) => {
+          const isFirst = logLines.length === 0;
+          logLines.push(...lines);
+          if (isFirst) {
+            void logsView.openLog(logTitle, logLines.join('\n'));
+          } else {
+            logsView.updateLog(logTitle, logLines.join('\n'));
+          }
+        },
+      })
         .catch((err: unknown) => {
           const message = err instanceof Error ? err.message : String(err);
           log.error(`Failed to reopen in workshop ${item.workshop.name}: ${message}`);
