@@ -7,6 +7,7 @@ import { listProjectWorkshops, Workshop } from './api/workshops';
 import { UNAVAILABLE_CONTEXT, WorkshopsTreeProvider, WorkshopItem } from './ui/workshopsTree';
 import { LogsView } from './ui/logsView';
 import { reopenInWorkshop } from './remote/reopen';
+import { createOpenPrompt } from './ui/openPrompt';
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -33,6 +34,32 @@ export function activate(context: vscode.ExtensionContext) {
   });
 
   const provider = new WorkshopsTreeProvider(poller, log);
+
+  // In a local window, do a one-shot prompt if the project has definitions.
+  // Skipped in ssh-remote windows (we're already inside a workshop).
+  if (vscode.env.remoteName !== 'ssh-remote') {
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    const localPath = resolveLocalProjectPath(folder, context.globalState);
+    if (localPath) {
+      // Fire-and-forget; errors are non-fatal (daemon may not be up yet).
+      void listProjectWorkshops(client, localPath)
+        .then((workshops) =>
+          createOpenPrompt({
+            workshops,
+            projectPath: localPath,
+            reopen: async (workshop) =>
+              handleReopenInWorkshop(client, context, log, logsView, new WorkshopItem(workshop)),
+          }),
+        )
+        .catch((err: unknown) => {
+          log.debug(
+            `Open prompt skipped: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        });
+    }
+  }
 
   // If connected via Remote-SSH to a workshop, tell the tree provider which
   // workshop is active so it can highlight that item, and switch to Explorer.

@@ -224,23 +224,48 @@ export class WorkshopClient {
   }
 
   /**
-   * Trigger a lifecycle action (`start`, `launch`, or `stop`) on one or more
-   * workshops and wait for the change to complete.
+   * Trigger a lifecycle action on one or more workshops and wait for the
+   * change to complete.
    *
-   * `POST /v1/projects/<id>/workshops` with `{ names, action }` returns an
-   * async change; we wait on it here so callers get back control only once the
-   * operation is fully done.
+   * `POST /v1/projects/<id>/workshops` with `{ names, action, options? }`
+   * returns an async change; we wait on it here so callers get back control
+   * only once the operation is fully done.
+   *
+   * When `options.mode` is `'wait-on-error'` the daemon pauses mid-build with
+   * status `Wait` instead of failing. In that case the change is returned
+   * as-is so the caller can decide whether to continue, abort, or debug.
    */
   async workshopAction(
     projectId: string,
     names: string[],
-    action: 'start' | 'launch' | 'stop',
+    action: 'start' | 'launch' | 'stop' | 'refresh',
+    options?: {
+      mode?: 'transactional' | 'wait-on-error' | 'continue' | 'abort';
+      verbose?: boolean;
+      refreshOption?: 'update' | 'restore';
+    },
   ): Promise<Change> {
+    const body: Record<string, unknown> = { names, action };
+    if (options) {
+      const opts: Record<string, unknown> = {};
+      if (options.mode !== undefined) { opts['mode'] = options.mode; }
+      if (options.verbose !== undefined) { opts['verbose'] = options.verbose; }
+      if (options.refreshOption !== undefined) { opts['refresh-option'] = options.refreshOption; }
+      body['options'] = opts;
+    }
     const { change } = await this.postAsync(
       `/v1/projects/${encodeURIComponent(projectId)}/workshops`,
-      { names, action },
+      body,
     );
-    return this.waitChange(change);
+    const result = await this.request(
+      'GET',
+      `/v1/changes/${encodeURIComponent(change)}/wait`,
+    );
+    const resolved = result as Change;
+    if (resolved.err && !(options?.mode === 'wait-on-error' && resolved.status === 'Wait')) {
+      throw new WorkshopApiError(resolved.err, 0);
+    }
+    return resolved;
   }
 
   /**

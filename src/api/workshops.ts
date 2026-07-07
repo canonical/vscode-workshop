@@ -62,6 +62,15 @@ export interface Workshop {
 export type ReopenAction = 'connect' | 'start' | 'launch';
 
 /**
+ * Return true when a "Refresh and reopen" offer makes sense for this workshop.
+ * Only workshops that are already built (running or stopped) can be refreshed;
+ * definition-only (never launched) workshops need a full `launch` instead.
+ */
+export function canRefresh(workshop: Workshop): boolean {
+  return workshop.status === 'On' || workshop.rawStatus?.toLowerCase() === 'stopped';
+}
+
+/**
  * Decide how to reopen into a workshop from its model. Derived from the raw
  * daemon status and origin, not the collapsed display {@link Status}.
  */
