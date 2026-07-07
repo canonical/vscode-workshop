@@ -29,6 +29,17 @@ export class LogsView {
   }
 
   /**
+   * Update the content of an already-open log tab without re-focusing it.
+   * If the tab has not been opened yet this is a no-op — use {@link openLog}
+   * for the initial open.
+   */
+  updateLog(title: string, text: string): void {
+    const uri = this.uriFor(title);
+    this.bodies.set(uri.toString(), text || '(no output captured)');
+    this.onDidChangeEmitter.fire(uri);
+  }
+
+  /**
    * Open (or refresh) a read-only preview editor showing `text`.
    *
    * Pass `column` to force placement; otherwise the log opens beside the

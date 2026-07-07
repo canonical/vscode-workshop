@@ -78,47 +78,9 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('workshop.install', () =>
       vscode.env.openExternal(vscode.Uri.parse('https://snapcraft.io/workshop')),
     ),
-    vscode.commands.registerCommand('workshop.reopenInWorkshop', (item: WorkshopItem) => {
-      const folder = vscode.workspace.workspaceFolders?.[0];
-      const projectPath = resolveLocalProjectPath(folder, context.globalState);
-      if (!projectPath) {
-        void vscode.window.showErrorMessage('No workspace folder open.');
-        return;
-      }
-      void context.globalState.update('workshop.localProjectPath', projectPath);
-      void context.globalState.update('workshop.activeWorkshopName', item.workshop.name);
-      reopenInWorkshop(client, projectPath, item.workshop, context.globalStorageUri.fsPath)
-        .catch((err: unknown) => {
-          const message = err instanceof Error ? err.message : String(err);
-          log.error(`Failed to reopen in workshop ${item.workshop.name}: ${message}`);
-          // Open the workshop definition in column One, then the error log
-          // beside it in column Two — same layout as the old extension.
-          void (async () => {
-            let anchored = false;
-            const defPath = item.workshop.definitionPath;
-            if (defPath) {
-              try {
-                await vscode.window.showTextDocument(vscode.Uri.file(defPath), {
-                  preview: false,
-                  viewColumn: vscode.ViewColumn.One,
-                });
-                anchored = true;
-              } catch {
-                // Definition file not readable — skip it.
-              }
-            }
-            if (anchored) {
-              await logsView.openLog(`${item.workshop.name} — error`, message);
-            } else {
-              await vscode.commands.executeCommand('vscode.setEditorLayout', {
-                orientation: 0,
-                groups: [{}, {}],
-              });
-              await logsView.openLog(`${item.workshop.name} — error`, message, vscode.ViewColumn.Two);
-            }
-          })();
-        });
-    }),
+    vscode.commands.registerCommand('workshop.reopenInWorkshop', (item: WorkshopItem) =>
+      handleReopenInWorkshop(client, context, log, logsView, item),
+    ),
     vscode.commands.registerCommand('workshop.reopenLocally', () => {
       void context.globalState.update('workshop.activeWorkshopName', undefined);
       const localPath = context.globalState.get<string>('workshop.localProjectPath');
@@ -133,6 +95,62 @@ export function activate(context: vscode.ExtensionContext) {
 
 // This method is called when your extension is deactivated
 export function deactivate() { }
+
+function handleReopenInWorkshop(
+  client: WorkshopClient,
+  context: vscode.ExtensionContext,
+  log: vscode.LogOutputChannel,
+  logsView: LogsView,
+  item: WorkshopItem,
+): void {
+  const folder = vscode.workspace.workspaceFolders?.[0];
+  const projectPath = resolveLocalProjectPath(folder, context.globalState);
+  if (!projectPath) {
+    void vscode.window.showErrorMessage('No workspace folder open.');
+    return;
+  }
+  void context.globalState.update('workshop.localProjectPath', projectPath);
+  const logLines: string[] = [];
+  reopenInWorkshop(client, projectPath, item.workshop, {
+    onLog: (lines) => logLines.push(...lines),
+  })
+    .then(() => {
+      void context.globalState.update('workshop.activeWorkshopName', item.workshop.name);
+    })
+    .catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      log.error(`Failed to reopen in workshop ${item.workshop.name}: ${message}`);
+      const logContent = logLines.length > 0
+        ? `${logLines.join('\n')}\n\n${message}`
+        : message;
+      // Open the workshop definition in column One, then the error log
+      // beside it in column Two.
+      void (async () => {
+        let anchored = false;
+        const defPath = item.workshop.definitionPath;
+        if (defPath) {
+          try {
+            await vscode.window.showTextDocument(vscode.Uri.file(defPath), {
+              preview: false,
+              viewColumn: vscode.ViewColumn.One,
+            });
+            anchored = true;
+          } catch {
+            // Definition file not readable — skip it.
+          }
+        }
+        if (anchored) {
+          await logsView.openLog(`${item.workshop.name} — error`, logContent);
+        } else {
+          await vscode.commands.executeCommand('vscode.setEditorLayout', {
+            orientation: 0,
+            groups: [{}, {}],
+          });
+          await logsView.openLog(`${item.workshop.name} — error`, logContent, vscode.ViewColumn.Two);
+        }
+      })();
+    });
+}
 
 /**
  * Resolve the local filesystem path for the project in the given workspace

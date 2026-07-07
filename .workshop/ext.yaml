@@ -9,3 +9,5 @@ actions:
     npx @vscode/vsce package
   test: |
     npm run test
+  test-ci: |
+    xvfb-run -a npm test
