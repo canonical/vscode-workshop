@@ -27,4 +27,14 @@ suite('daemonSshConfigPath', () => {
     const result = daemonSshConfigPath('/home/user/.workshop/workshop.socket');
     assert.strictEqual(result, path.join('/var/lib/workshop/ssh', uid, 'config'));
   });
+
+  test('$WORKSHOP env var takes precedence over socket path heuristic', () => {
+    const result = daemonSshConfigPath(SNAP_SOCKET_PATH, { WORKSHOP: '/tmp/myworkshop' });
+    assert.strictEqual(result, path.join('/tmp/myworkshop', 'ssh', uid, 'config'));
+  });
+
+  test('$WORKSHOP overrides snap heuristic even for snap socket', () => {
+    const result = daemonSshConfigPath(SNAP_SOCKET_PATH, { WORKSHOP: '/home/user/.workshop' });
+    assert.strictEqual(result, path.join('/home/user/.workshop', 'ssh', uid, 'config'));
+  });
 });

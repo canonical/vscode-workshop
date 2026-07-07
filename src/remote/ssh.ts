@@ -11,13 +11,24 @@ const DEFAULT_SSH_DIR = '/var/lib/workshop/ssh';
  * Return the path to the workshopd-generated SSH config for the current user.
  *
  * workshopd places the config at `<ssh-dir>/<uid>/config` where `<ssh-dir>`
- * depends on how Workshop is installed:
- *   - snap:   `/var/snap/workshop/current/ssh`
- *   - system: `/var/lib/workshop/ssh`
+ * is derived in priority order:
+ *   1. `$WORKSHOP/ssh`  — set by `go tool try` for development sessions
+ *   2. snap path (`/var/snap/workshop/current/ssh`) — when socket is under `/var/snap/workshop/`
+ *   3. system default (`/var/lib/workshop/ssh`)
  */
-export function daemonSshConfigPath(socketPath: string): string {
-  const sshDir = socketPath.startsWith('/var/snap/workshop/') ? SNAP_SSH_DIR : DEFAULT_SSH_DIR;
-  const uid = String(os.userInfo().uid);
+export function daemonSshConfigPath(
+  socketPath: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  let sshDir: string;
+  if (env.WORKSHOP) {
+    sshDir = path.join(env.WORKSHOP, 'ssh');
+  } else if (socketPath.startsWith('/var/snap/workshop/')) {
+    sshDir = SNAP_SSH_DIR;
+  } else {
+    sshDir = DEFAULT_SSH_DIR;
+  }
+  const uid = String(process.getuid?.() ?? os.userInfo().uid);
   return path.join(sshDir, uid, 'config');
 }
 

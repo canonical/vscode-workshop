@@ -58,7 +58,7 @@ export async function reopenInWorkshop(
       progress.report({ message: 'Reading workshop info…' });
       const info = await client.getWorkshop(project.id, workshop.name);
       if (!info.hostname) {
-        throw new Error(`Workshop ${workshop.name} has no hostname after start`);
+        throw new Error(`"${workshop.name}" workshop has no hostname after start`);
       }
       const hostname = info.hostname;
 
