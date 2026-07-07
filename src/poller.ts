@@ -85,6 +85,7 @@ export class WorkshopPoller<T> implements vscode.Disposable {
         this.updateEmitter.fire(result);
       }
     } catch (err) {
+      this.lastJson = undefined; // reset so recovery always fires onDidUpdate
       this.errorEmitter.fire(err instanceof Error ? err : new Error(String(err)));
     } finally {
       this.inFlight = false;
