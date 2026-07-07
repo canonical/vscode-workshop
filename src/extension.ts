@@ -95,7 +95,7 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.window.registerFileDecorationProvider(provider.decorationProvider),
     treeView.onDidChangeVisibility((e) => {
       if (e.visible) {
-        activationHandle = poller.activate();
+        activationHandle ??= poller.activate();
       } else {
         activationHandle?.dispose();
         activationHandle = undefined;
