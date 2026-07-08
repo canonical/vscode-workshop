@@ -14,6 +14,13 @@ export interface ReopenCallbacks {
    * `launch` operation. Lines are in the order the daemon produced them.
    */
   onLog?: (lines: string[]) => void;
+  /**
+   * Called when a `wait-on-error` refresh pauses (Wait state) because a task
+   * failed. Lets the caller surface the logs and decide whether to connect
+   * into the paused workshop for debugging. Returns `true` to connect. When
+   * omitted, a paused refresh does not connect.
+   */
+  onPause?: () => Promise<boolean>;
 }
 
 /**

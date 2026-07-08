@@ -36,24 +36,6 @@ async function captureCommands(body: () => Promise<void>): Promise<CapturedComma
   return captured;
 }
 
-type ShowInfoMessage = typeof vscode.window.showInformationMessage;
-type MutableWindow = { showInformationMessage: ShowInfoMessage };
-
-/**
- * Intercept `vscode.window.showInformationMessage` while `body` runs,
- * returning `choice` as the user's selection.
- */
-async function withInfoMessageChoice<T>(choice: string | undefined, body: () => Promise<T>): Promise<T> {
-  const original = vscode.window.showInformationMessage;
-  (vscode.window as MutableWindow).showInformationMessage = ((_message: string, ..._items: string[]) =>
-    Promise.resolve(choice)) as unknown as ShowInfoMessage;
-  try {
-    return await body();
-  } finally {
-    (vscode.window as MutableWindow).showInformationMessage = original;
-  }
-}
-
 /**
  * Start a minimal fake workshopd for refresh tests.
  *
@@ -187,13 +169,13 @@ suite('refreshAndReopen', () => {
       const client = new WorkshopClient({ socketPath });
       const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready' };
 
-      // User clicks "Debug"
+      // onPause returns true → connect for debugging.
       const commands = await captureCommands(() =>
-        withInfoMessageChoice('Debug', () => refreshAndReopen(client, '/repo', workshop)),
+        refreshAndReopen(client, '/repo', workshop, { onPause: () => Promise.resolve(true) }),
       );
 
       const openFolder = commands.find((c) => c.command === 'vscode.openFolder');
-      assert.ok(openFolder, 'connected after choosing Debug');
+      assert.ok(openFolder, 'connected after onPause resolved true');
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
@@ -205,13 +187,28 @@ suite('refreshAndReopen', () => {
       const client = new WorkshopClient({ socketPath });
       const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready' };
 
-      // User clicks "Cancel" (or dismisses)
+      // onPause returns false → do not connect.
       const commands = await captureCommands(() =>
-        withInfoMessageChoice('Cancel', () => refreshAndReopen(client, '/repo', workshop)),
+        refreshAndReopen(client, '/repo', workshop, { onPause: () => Promise.resolve(false) }),
       );
 
       const openFolder = commands.find((c) => c.command === 'vscode.openFolder');
-      assert.strictEqual(openFolder, undefined, 'should not connect after Cancel');
+      assert.strictEqual(openFolder, undefined, 'should not connect when onPause resolves false');
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  test('does not connect when no onPause is provided on pause', async () => {
+    const server = await startFakeDaemon(socketPath, { refreshStatus: 'Wait' });
+    try {
+      const client = new WorkshopClient({ socketPath });
+      const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready' };
+
+      const commands = await captureCommands(() => refreshAndReopen(client, '/repo', workshop));
+
+      const openFolder = commands.find((c) => c.command === 'vscode.openFolder');
+      assert.strictEqual(openFolder, undefined, 'a paused refresh without onPause does not connect');
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }

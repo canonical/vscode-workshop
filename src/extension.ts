@@ -208,6 +208,38 @@ async function showWorkshopError(
   }
 }
 
+/**
+ * Build the callbacks for a refresh: collect verbose log lines, and on a
+ * paused (`Wait`) refresh show those logs — same presentation as a failed
+ * launch — then ask whether to connect into the workshop to debug.
+ */
+function refreshCallbacks(
+  log: vscode.LogOutputChannel,
+  logsView: LogsView,
+  workshop: Workshop,
+  logLines: string[],
+): ReopenCallbacks {
+  return {
+    onLog: (lines) => logLines.push(...lines),
+    onPause: async () => {
+      await showWorkshopError(
+        log,
+        logsView,
+        'refresh',
+        workshop.name,
+        workshop.definitionPath,
+        new Error('refresh paused on the first failing task'),
+        logLines,
+      );
+      const choice = await vscode.window.showInformationMessage(
+        `"${workshop.name}" refresh failed. Debug in workshop?`,
+        'Debug',
+      );
+      return choice === 'Debug';
+    },
+  };
+}
+
 function handleRefreshAndReopen(
   client: WorkshopClient,
   context: vscode.ExtensionContext,
@@ -222,9 +254,12 @@ function handleRefreshAndReopen(
     return;
   }
   const logLines: string[] = [];
-  refreshAndReopen(client, projectPath, item.workshop, {
-    onLog: (lines) => logLines.push(...lines),
-  })
+  refreshAndReopen(
+    client,
+    projectPath,
+    item.workshop,
+    refreshCallbacks(log, logsView, item.workshop, logLines),
+  )
     .then(() => {
       void context.globalState.update('workshop.activeWorkshopName', item.workshop.name);
     })
@@ -306,7 +341,14 @@ function runResumeRefresh(
   reopen: boolean,
 ): void {
   const logLines: string[] = [];
-  refreshAndReopen(client, projectPath, workshop, { onLog: (lines) => logLines.push(...lines) }, mode, reopen)
+  refreshAndReopen(
+    client,
+    projectPath,
+    workshop,
+    refreshCallbacks(log, logsView, workshop, logLines),
+    mode,
+    reopen,
+  )
     .then(() => {
       if (reopen) {
         void context.globalState.update('workshop.activeWorkshopName', workshop.name);

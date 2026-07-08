@@ -18,8 +18,9 @@ const REFRESH_VERB: Record<'wait-on-error' | 'continue' | 'abort', string> = {
  * 1. POST a `refresh` action with the given `mode` and poll the change with
  *    `verbose=true`, streaming task summaries and log lines while the build
  *    runs — same loop as the `launch` path in {@link reopenInWorkshop}.
- * 2. If the change pauses (`Wait` state), notify the user and offer a
- *    "Debug" shortcut to connect inside the paused workshop.
+ * 2. If the change pauses (`Wait` state) the refresh failed on a task; defer to
+ *    {@link ReopenCallbacks.onPause} so the caller can show the logs and decide
+ *    whether to connect for debugging.
  * 3. On success, call {@link reopenInWorkshop} on the `connect` path (no
  *    second action needed — the workshop is running after a successful refresh).
  *
@@ -72,14 +73,11 @@ export async function refreshAndReopen(
     },
   );
 
-  // Phase 2: if paused, ask whether to connect for debugging.
+  // Phase 2: if paused, the refresh failed on a task. Let the caller surface
+  // the logs and decide whether to connect for debugging.
   if (paused) {
-    const choice = await vscode.window.showInformationMessage(
-      `"${workshop.name}" refresh failed. Debug in workshop?`,
-      'Debug',
-      'Cancel',
-    );
-    if (choice !== 'Debug') {
+    const connect = (await callbacks.onPause?.()) ?? false;
+    if (!connect) {
       return;
     }
   }
