@@ -73,6 +73,11 @@
         "title": "Refresh and Reopen in Workshop",
         "category": "Workshop",
         "icon": "$(sync)"
+      },
+      {
+        "command": "workshop.openDefinition",
+        "title": "Open Definition File",
+        "category": "Workshop"
       }
     ],
     "viewsWelcome": [

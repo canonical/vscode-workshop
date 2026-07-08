@@ -146,6 +146,9 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('workshop.refreshAndReopen', (item: WorkshopItem) =>
       handleRefreshAndReopen(client, context, log, logsView, item),
     ),
+    vscode.commands.registerCommand('workshop.openDefinition', (definitionPath: string) => {
+      void vscode.window.showTextDocument(vscode.Uri.file(definitionPath), { preview: false });
+    }),
   );
 
 }

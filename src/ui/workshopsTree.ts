@@ -72,6 +72,13 @@ export class WorkshopItem extends vscode.TreeItem {
     this.tooltip = workshop.name;
     this.description = workshop.status;
     this.iconPath = workshopIcon(workshop.status, active);
+    if (workshop.definitionPath) {
+      this.command = {
+        command: 'workshop.openDefinition',
+        title: 'Open Definition File',
+        arguments: [workshop.definitionPath],
+      };
+    }
     if (active) {
       this.contextValue = 'workshop-active';
     } else if (workshop.status === 'Pending') {
