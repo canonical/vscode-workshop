@@ -23,7 +23,13 @@ export class WorkshopPoller<T> implements vscode.Disposable {
   private readonly handles = new Set<vscode.Disposable>();
   private timer: ReturnType<typeof setInterval> | undefined;
   private lastJson: string | undefined;
+  private lastParsed: T | undefined;
   private inFlight = false;
+
+  /** The most recently polled value, or `undefined` before the first successful poll. */
+  get lastValue(): T | undefined {
+    return this.lastParsed;
+  }
 
   constructor(
     private readonly fn: () => Promise<T>,
@@ -82,10 +88,12 @@ export class WorkshopPoller<T> implements vscode.Disposable {
       const json = JSON.stringify(result);
       if (json !== this.lastJson) {
         this.lastJson = json;
+        this.lastParsed = result;
         this.updateEmitter.fire(result);
       }
     } catch (err) {
       this.lastJson = undefined; // reset so recovery always fires onDidUpdate
+      this.lastParsed = undefined;
       this.errorEmitter.fire(err instanceof Error ? err : new Error(String(err)));
     } finally {
       this.inFlight = false;

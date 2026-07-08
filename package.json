@@ -67,6 +67,12 @@
         "title": "Reopen Locally",
         "category": "Workshop",
         "icon": "$(home)"
+      },
+      {
+        "command": "workshop.refreshAndReopen",
+        "title": "Refresh and Reopen in Workshop",
+        "category": "Workshop",
+        "icon": "$(sync)"
       }
     ],
     "viewsWelcome": [
@@ -87,6 +93,11 @@
       "view/item/context": [
         {
           "command": "workshop.reopenInWorkshop",
+          "when": "view == workshop.workshops && viewItem == workshop",
+          "group": "inline"
+        },
+        {
+          "command": "workshop.refreshAndReopen",
           "when": "view == workshop.workshops && viewItem == workshop",
           "group": "inline"
         },
