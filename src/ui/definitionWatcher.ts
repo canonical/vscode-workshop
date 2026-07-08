@@ -16,9 +16,10 @@ const DEFINITION_GLOBS = [
 
 /**
  * Watch all workshop definition files in the workspace for changes.
- * Calls `onChanged` with the absolute filesystem path of the changed file,
- * debounced so that rapid saves (e.g. editor auto-save) produce only one
- * notification per quiet period.
+ * Calls `onChanged` with the absolute filesystem path of the changed file.
+ * The first change fires immediately; subsequent changes within `debounceMs`
+ * are suppressed so that rapid saves (e.g. editor auto-save) don't flood the
+ * caller with notifications.
  *
  * Returns a `Disposable` that stops the watcher when disposed.
  */
@@ -32,15 +33,25 @@ export function createDefinitionWatcher(
     const key = uri.fsPath;
     const existing = timers.get(key);
     if (existing !== undefined) {
+      // Already fired once; reset the debounce window and skip this event.
       clearTimeout(existing);
+      timers.set(
+        key,
+        setTimeout(() => {
+          timers.delete(key);
+        }, debounceMs),
+      );
+    } else {
+      // First change — fire immediately, then open a debounce window to
+      // suppress further events while the user is still saving.
+      onChanged(key);
+      timers.set(
+        key,
+        setTimeout(() => {
+          timers.delete(key);
+        }, debounceMs),
+      );
     }
-    timers.set(
-      key,
-      setTimeout(() => {
-        timers.delete(key);
-        onChanged(key);
-      }, debounceMs),
-    );
   }
 
   const watchers = DEFINITION_GLOBS.map((pattern) => {
