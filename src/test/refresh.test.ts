@@ -187,13 +187,13 @@ suite('refreshAndReopen', () => {
       const client = new WorkshopClient({ socketPath });
       const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready' };
 
-      // User clicks "Connect"
+      // User clicks "Debug"
       const commands = await captureCommands(() =>
-        withInfoMessageChoice('Connect', () => refreshAndReopen(client, '/repo', workshop)),
+        withInfoMessageChoice('Debug', () => refreshAndReopen(client, '/repo', workshop)),
       );
 
       const openFolder = commands.find((c) => c.command === 'vscode.openFolder');
-      assert.ok(openFolder, 'connected after choosing Connect');
+      assert.ok(openFolder, 'connected after choosing Debug');
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }

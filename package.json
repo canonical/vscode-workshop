@@ -78,6 +78,18 @@
         "command": "workshop.openDefinition",
         "title": "Open Definition File",
         "category": "Workshop"
+      },
+      {
+        "command": "workshop.continueRefresh",
+        "title": "Continue Refresh",
+        "category": "Workshop",
+        "icon": "$(debug-continue)"
+      },
+      {
+        "command": "workshop.abortRefresh",
+        "title": "Abort Refresh",
+        "category": "Workshop",
+        "icon": "$(stop-circle)"
       }
     ],
     "viewsWelcome": [
@@ -102,8 +114,18 @@
           "group": "inline"
         },
         {
+          "command": "workshop.continueRefresh",
+          "when": "view == workshop.workshops && (viewItem == workshop-active-waiting || (viewItem == workshop-waiting && remoteName != 'ssh-remote'))",
+          "group": "inline"
+        },
+        {
+          "command": "workshop.abortRefresh",
+          "when": "view == workshop.workshops && (viewItem == workshop-active-waiting || (viewItem == workshop-waiting && remoteName != 'ssh-remote'))",
+          "group": "inline"
+        },
+        {
           "command": "workshop.reopenLocally",
-          "when": "view == workshop.workshops && viewItem == workshop-active",
+          "when": "view == workshop.workshops && (viewItem == workshop-active || viewItem == workshop-active-waiting)",
           "group": "inline"
         }
       ],

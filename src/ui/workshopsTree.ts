@@ -79,7 +79,12 @@ export class WorkshopItem extends vscode.TreeItem {
         arguments: [workshop.definitionPath],
       };
     }
-    if (active) {
+    if (workshop.status === 'Waiting') {
+      // A paused-mid-refresh workshop offers continue/abort actions. The active
+      // (connected) one is distinguished so its hover buttons can show even
+      // inside the workshop; non-active waiting ones only show them locally.
+      this.contextValue = active ? 'workshop-active-waiting' : 'workshop-waiting';
+    } else if (active) {
       this.contextValue = 'workshop-active';
     } else if (workshop.status === 'Pending') {
       this.contextValue = 'workshop-pending';
