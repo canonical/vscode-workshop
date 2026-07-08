@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-import { WorkshopApiError, WorkshopClient } from '../api/client';
+import { Change, WorkshopApiError, WorkshopClient } from '../api/client';
 import { Workshop, reopenAction } from '../api/workshops';
 import { ensureDaemonSshInclude } from './ssh';
 
@@ -46,16 +46,17 @@ export async function reopenInWorkshop(
       const action = reopenAction(workshop);
 
       // Step 1: bring the workshop online if needed.
-      if (action === 'start') {
-        progress.report({ message: 'starting…' });
-        await client.workshopAction(project.id, [workshop.name], 'start');
-      } else if (action === 'launch') {
-        await launchVerbose(client, project.id, workshop.name, progress, callbacks);
+      if (action !== 'connect') {
+        const change = await runAction(
+          client, project.id, workshop.name, action, progress, callbacks,
+          /* verbose */ action === 'launch',
+        );
+        if (change.err) {
+          throw new WorkshopApiError(change.err, 0);
+        }
       }
 
-      // Step 2: read the hostname — available immediately after the action
-      // completes because the polling loop already waited for the change to finish.
-      progress.report({ message: 'Reading workshop info…' });
+      // Step 2: read the hostname.
       const info = await client.getWorkshop(project.id, workshop.name);
       if (!info.hostname) {
         throw new Error(
@@ -79,23 +80,34 @@ export async function reopenInWorkshop(
 }
 
 /**
- * POST a `launch` action and poll the change with `verbose=true`, mirroring
- * the progress-tracking loop in `cmd/workshop/wait.go`:
+ * POST a workshop action and poll the change, mirroring the progress-tracking
+ * loop in `cmd/workshop/wait.go`:
  *
  * - Reports each "Doing" task's `summary` in the VS Code notification.
- * - Emits new task log lines via {@link ReopenCallbacks.onLog} so the caller
- *   can stream them into the Logs View panel.
+ * - When `verbose` is true, emits new task log lines via
+ *   {@link ReopenCallbacks.onLog} so the caller can stream them into the Logs
+ *   View panel.
+ *
+ * Returns the final Change without throwing — callers must check `.err` and
+ * `.status` (e.g. `'Wait'` for a paused `wait-on-error` refresh).
  */
-async function launchVerbose(
+export async function runAction(
   client: WorkshopClient,
   projectId: string,
   name: string,
+  action: 'start' | 'launch' | 'refresh',
   progress: vscode.Progress<{ message?: string }>,
   callbacks: ReopenCallbacks,
-): Promise<void> {
+  verbose: boolean,
+  options?: Record<string, unknown>,
+): Promise<Change> {
+  const body: Record<string, unknown> = { names: [name], action };
+  if (options && Object.keys(options).length > 0) {
+    body['options'] = options;
+  }
   const { change: changeId } = await client.postAsync(
     `/v1/projects/${encodeURIComponent(projectId)}/workshops`,
-    { names: [name], action: 'launch' },
+    body,
   );
 
   // Track how many log lines we have already forwarded per task, so we only
@@ -103,7 +115,7 @@ async function launchVerbose(
   const seenLines = new Map<string, number>();
 
   for (;;) {
-    const chg = await client.getChange(changeId, true /* verbose */);
+    const chg = await client.getChange(changeId, verbose);
 
     // Collect newly-arrived log lines across all tasks.
     const newLines: string[] = [];
@@ -127,11 +139,9 @@ async function launchVerbose(
       progress.report({ message: doingTask.summary });
     }
 
-    if (chg.ready) {
-      if (chg.err) {
-        throw new WorkshopApiError(chg.err, 0);
-      }
-      return;
+    // Exit when done or paused (Wait state from wait-on-error refresh).
+    if (chg.ready || chg.status === 'Wait') {
+      return chg;
     }
 
     await new Promise<void>((resolve) => setTimeout(resolve, LAUNCH_POLL_MS));
