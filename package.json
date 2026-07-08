@@ -110,7 +110,7 @@
       "view/item/context": [
         {
           "command": "workshop.reopenInWorkshop",
-          "when": "view == workshop.workshops && viewItem == workshop",
+          "when": "view == workshop.workshops && (viewItem == workshop || (viewItem == workshop-waiting && remoteName != 'ssh-remote'))",
           "group": "inline"
         },
         {
