@@ -102,11 +102,6 @@
           "group": "inline"
         },
         {
-          "command": "workshop.refreshAndReopen",
-          "when": "view == workshop.workshops && viewItem == workshop",
-          "group": "inline"
-        },
-        {
           "command": "workshop.reopenLocally",
           "when": "view == workshop.workshops && viewItem == workshop-active",
           "group": "inline"

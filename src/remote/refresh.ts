@@ -58,10 +58,10 @@ export async function refreshAndReopen(
   if (paused) {
     const choice = await vscode.window.showInformationMessage(
       `"${workshop.name}" paused mid-refresh. Debug in workshop?`,
-      'Connect',
+      'Debug',
       'Cancel',
     );
-    if (choice !== 'Connect') {
+    if (choice !== 'Debug') {
       return;
     }
   }
