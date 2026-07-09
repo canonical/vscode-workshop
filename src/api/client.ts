@@ -33,6 +33,12 @@ export interface WorkshopInfo {
    * network identity.
    */
   hostname?: string;
+  /**
+   * Absolute path to the definition file. Only the single-workshop endpoint
+   * (`GET .../workshops/<name>`) includes it — the `Workshop` struct adds a
+   * `path` field on top of the embedded {@link WorkshopInfo}.
+   */
+  path?: string;
 }
 
 /**
@@ -58,8 +64,17 @@ export interface ChangeTask {
   status: string;
   /** Verbose log lines emitted by the task (present when `verbose=true`). */
   log?: string[];
+  /** Completion progress for the task. `total` is 1 for indeterminate work. */
+  progress?: TaskProgress;
   /** Kind-specific data (e.g. an `exec` task carries `exit-code`). */
   data?: Record<string, unknown>;
+}
+
+/** A task's completion progress (see `TaskProgress` in `client/changes.go`). */
+export interface TaskProgress {
+  label: string;
+  done: number;
+  total: number;
 }
 
 /** A daemon change: the async unit of work returned by mutating endpoints. */
@@ -83,11 +98,16 @@ interface ResponseEnvelope {
   result?: unknown;
 }
 
+/** Daemon error `kind` returned when a refresh finds nothing to update. */
+export const ERROR_KIND_NO_UPDATES_AVAILABLE = 'no-updates-available';
+
 /** Thrown when the daemon returns an error envelope or a non-2xx status. */
 export class WorkshopApiError extends Error {
   constructor(
     message: string,
     readonly statusCode: number,
+    /** The daemon error `kind` (e.g. `no-updates-available`), when present. */
+    readonly kind?: string,
   ) {
     super(message);
     this.name = 'WorkshopApiError';
@@ -156,6 +176,12 @@ export interface WorkshopClientOptions {
 export class WorkshopClient {
   private readonly socketPath: string;
   private readonly timeoutMs: number;
+  /**
+   * Memoized project lookups keyed by directory path. A project's id is stable
+   * for a given path, so we cache it to avoid re-POSTing `/v1/projects` on
+   * every poll tick and every action.
+   */
+  private readonly projectCache = new Map<string, Project>();
 
   constructor(options: WorkshopClientOptions = {}) {
     this.socketPath = options.socketPath ?? defaultSocketPath();
@@ -176,10 +202,20 @@ export class WorkshopClient {
   /**
    * Resolve a directory to a project, registering it with the daemon if it
    * isn't known yet. This is the entry point for any per-directory query.
+   *
+   * The result is memoized by path: the project id is stable for a directory,
+   * so repeat callers (the poller, action handlers) reuse it instead of
+   * re-POSTing `/v1/projects` each time.
    */
   async ensureProject(projectPath: string): Promise<Project> {
+    const cached = this.projectCache.get(projectPath);
+    if (cached) {
+      return cached;
+    }
     const result = await this.request('POST', '/v1/projects', { path: projectPath });
-    return result as Project;
+    const project = result as Project;
+    this.projectCache.set(projectPath, project);
+    return project;
   }
 
   /**
@@ -224,23 +260,48 @@ export class WorkshopClient {
   }
 
   /**
-   * Trigger a lifecycle action (`start`, `launch`, or `stop`) on one or more
-   * workshops and wait for the change to complete.
+   * Trigger a lifecycle action on one or more workshops and wait for the
+   * change to complete.
    *
-   * `POST /v1/projects/<id>/workshops` with `{ names, action }` returns an
-   * async change; we wait on it here so callers get back control only once the
-   * operation is fully done.
+   * `POST /v1/projects/<id>/workshops` with `{ names, action, options? }`
+   * returns an async change; we wait on it here so callers get back control
+   * only once the operation is fully done.
+   *
+   * When `options.mode` is `'wait-on-error'` the daemon pauses mid-build with
+   * status `Wait` instead of failing. In that case the change is returned
+   * as-is so the caller can decide whether to continue, abort, or debug.
    */
   async workshopAction(
     projectId: string,
     names: string[],
-    action: 'start' | 'launch' | 'stop',
+    action: 'start' | 'launch' | 'stop' | 'refresh' | 'remove',
+    options?: {
+      mode?: 'transactional' | 'wait-on-error' | 'continue' | 'abort';
+      verbose?: boolean;
+      refreshOption?: 'update' | 'restore';
+    },
   ): Promise<Change> {
+    const body: Record<string, unknown> = { names, action };
+    if (options) {
+      const opts: Record<string, unknown> = {};
+      if (options.mode !== undefined) { opts['mode'] = options.mode; }
+      if (options.verbose !== undefined) { opts['verbose'] = options.verbose; }
+      if (options.refreshOption !== undefined) { opts['refresh-option'] = options.refreshOption; }
+      body['options'] = opts;
+    }
     const { change } = await this.postAsync(
       `/v1/projects/${encodeURIComponent(projectId)}/workshops`,
-      { names, action },
+      body,
     );
-    return this.waitChange(change);
+    const result = await this.request(
+      'GET',
+      `/v1/changes/${encodeURIComponent(change)}/wait`,
+    );
+    const resolved = result as Change;
+    if (resolved.err && !(options?.mode === 'wait-on-error' && resolved.status === 'Wait')) {
+      throw new WorkshopApiError(resolved.err, 0);
+    }
+    return resolved;
   }
 
   /**
@@ -334,11 +395,12 @@ export class WorkshopClient {
     }
 
     if (envelope.type === 'error' || !isSuccess(status)) {
+      const result = isRecord(envelope.result) ? envelope.result : undefined;
       const message =
-        (isRecord(envelope.result) && typeof envelope.result.message === 'string'
-          ? envelope.result.message
-          : undefined) ?? `workshopd request failed (${status})`;
-      throw new WorkshopApiError(message, status);
+        (typeof result?.message === 'string' ? result.message : undefined) ??
+        `workshopd request failed (${status})`;
+      const kind = typeof result?.kind === 'string' ? result.kind : undefined;
+      throw new WorkshopApiError(message, status, kind);
     }
 
     return envelope;

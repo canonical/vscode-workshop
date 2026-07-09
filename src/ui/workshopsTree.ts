@@ -53,6 +53,17 @@ export class WorkshopDecorationProvider implements vscode.FileDecorationProvider
   }
 }
 
+/** Select the tree-row icon based on status and whether this is the active workshop. */
+function workshopIcon(status: Workshop['status'], active: boolean): vscode.ThemeIcon {
+  if (active) {
+    if (status === 'Waiting') {
+      return new vscode.ThemeIcon('watch', new vscode.ThemeColor('charts.yellow'));
+    }
+    return new vscode.ThemeIcon('pass-filled', new vscode.ThemeColor('charts.green'));
+  }
+  return statusIcon(status);
+}
+
 /** A single workshop row in the tree. */
 export class WorkshopItem extends vscode.TreeItem {
   constructor(readonly workshop: Workshop, active = false) {
@@ -60,13 +71,26 @@ export class WorkshopItem extends vscode.TreeItem {
     this.resourceUri = vscode.Uri.from({ scheme: WORKSHOP_ITEM_SCHEME, path: `/${workshop.name}` });
     this.tooltip = workshop.name;
     this.description = workshop.status;
-    this.iconPath = active && workshop.status !== 'Waiting'
-      ? new vscode.ThemeIcon('pass-filled', new vscode.ThemeColor('charts.green'))
-      : statusIcon(workshop.status);
-    if (active) {
+    this.iconPath = workshopIcon(workshop.status, active);
+    if (workshop.definitionPath) {
+      this.command = {
+        command: 'workshop.openDefinition',
+        title: 'Open Definition File',
+        arguments: [workshop.definitionPath],
+      };
+    }
+    if (workshop.status === 'Waiting') {
+      // A paused-mid-refresh workshop offers continue/abort actions. The active
+      // (connected) one is distinguished so its hover buttons can show even
+      // inside the workshop; non-active waiting ones only show them locally.
+      this.contextValue = active ? 'workshop-active-waiting' : 'workshop-waiting';
+    } else if (active) {
       this.contextValue = 'workshop-active';
     } else if (workshop.status === 'Pending') {
       this.contextValue = 'workshop-pending';
+    } else if (workshop.status === 'On') {
+      // Ready but not the connected one — can be refreshed and reopened.
+      this.contextValue = 'workshop-ready';
     } else {
       this.contextValue = 'workshop';
     }

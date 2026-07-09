@@ -6,8 +6,8 @@ import { Status } from '../api/workshops';
  *
  * | Status  | Glyph (codicon)       | Colour          |
  * |---------|-----------------------|-----------------|
- * | On      | `pass`                | charts.green    |
- * | Waiting | `watch`               | charts.yellow   |
+ * | On      | `pass`                | disabled fg     |
+ * | Waiting | `watch`               | disabled fg     |
  * | Error   | `error`               | charts.red      |
  * | Off     | `circle-large-outline`| disabled fg     |
  * | Pending | `loading~spin`        | (foreground)    |
@@ -18,7 +18,7 @@ export function statusIcon(status: Status): vscode.ThemeIcon {
     case 'On':
       return new vscode.ThemeIcon('pass', new vscode.ThemeColor('disabledForeground'));
     case 'Waiting':
-      return new vscode.ThemeIcon('watch', new vscode.ThemeColor('charts.yellow'));
+      return new vscode.ThemeIcon('watch', new vscode.ThemeColor('disabledForeground'));
     case 'Error':
       return new vscode.ThemeIcon('error', new vscode.ThemeColor('charts.red'));
     case 'Off':

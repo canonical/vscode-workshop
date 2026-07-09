@@ -67,6 +67,35 @@
         "title": "Reopen Locally",
         "category": "Workshop",
         "icon": "$(home)"
+      },
+      {
+        "command": "workshop.refreshAndReopen",
+        "title": "Refresh and Reopen",
+        "category": "Workshop",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "workshop.openDefinition",
+        "title": "Open Definition File",
+        "category": "Workshop"
+      },
+      {
+        "command": "workshop.continueRefresh",
+        "title": "Continue Refresh",
+        "category": "Workshop",
+        "icon": "$(debug-continue)"
+      },
+      {
+        "command": "workshop.abortRefresh",
+        "title": "Abort Refresh",
+        "category": "Workshop",
+        "icon": "$(stop-circle)"
+      },
+      {
+        "command": "workshop.turnOff",
+        "title": "Turn Off",
+        "category": "Workshop",
+        "icon": "$(circle-slash)"
       }
     ],
     "viewsWelcome": [
@@ -87,13 +116,33 @@
       "view/item/context": [
         {
           "command": "workshop.reopenInWorkshop",
-          "when": "view == workshop.workshops && viewItem == workshop",
+          "when": "view == workshop.workshops && (viewItem == workshop || viewItem == workshop-ready || (viewItem == workshop-waiting && remoteName != 'ssh-remote'))",
+          "group": "inline"
+        },
+        {
+          "command": "workshop.refreshAndReopen",
+          "when": "view == workshop.workshops && (viewItem == workshop-ready || viewItem == workshop-active)",
+          "group": "inline"
+        },
+        {
+          "command": "workshop.continueRefresh",
+          "when": "view == workshop.workshops && (viewItem == workshop-active-waiting || (viewItem == workshop-waiting && remoteName != 'ssh-remote'))",
+          "group": "inline"
+        },
+        {
+          "command": "workshop.abortRefresh",
+          "when": "view == workshop.workshops && (viewItem == workshop-active-waiting || (viewItem == workshop-waiting && remoteName != 'ssh-remote'))",
           "group": "inline"
         },
         {
           "command": "workshop.reopenLocally",
-          "when": "view == workshop.workshops && viewItem == workshop-active",
+          "when": "view == workshop.workshops && (viewItem == workshop-active || viewItem == workshop-active-waiting)",
           "group": "inline"
+        },
+        {
+          "command": "workshop.turnOff",
+          "when": "view == workshop.workshops && (viewItem == workshop-ready || viewItem == workshop-active)",
+          "group": "actions"
         }
       ],
       "statusBar/remoteIndicator": [
