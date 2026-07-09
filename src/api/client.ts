@@ -83,6 +83,9 @@ interface ResponseEnvelope {
   result?: unknown;
 }
 
+/** Daemon error `kind` returned when a refresh finds nothing to update. */
+export const ERROR_KIND_NO_UPDATES_AVAILABLE = 'no-updates-available';
+
 /** Thrown when the daemon returns an error envelope or a non-2xx status. */
 export class WorkshopApiError extends Error {
   constructor(

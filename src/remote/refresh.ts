@@ -1,11 +1,8 @@
 import * as vscode from 'vscode';
 
-import { WorkshopApiError, WorkshopClient } from '../api/client';
+import { ERROR_KIND_NO_UPDATES_AVAILABLE, WorkshopApiError, WorkshopClient } from '../api/client';
 import { Workshop } from '../api/workshops';
 import { ReopenCallbacks, reopenInWorkshop, runAction } from './reopen';
-
-/** Daemon error kind returned when a refresh finds nothing to update. */
-const NO_UPDATES_AVAILABLE = 'no-updates-available';
 
 /** Progress-notification verb shown while each refresh mode runs. */
 const REFRESH_VERB: Record<'wait-on-error' | 'continue' | 'abort', string> = {
@@ -79,7 +76,7 @@ export async function refreshAndReopen(
         // "no updates available" isn't a failure: the definition already
         // matches the running workshop, so there's nothing to refresh. Fall
         // through to reopening.
-        if (err instanceof WorkshopApiError && err.kind === NO_UPDATES_AVAILABLE) {
+        if (err instanceof WorkshopApiError && err.kind === ERROR_KIND_NO_UPDATES_AVAILABLE) {
           return;
         }
         throw err;
