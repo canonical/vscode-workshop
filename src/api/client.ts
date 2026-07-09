@@ -88,6 +88,8 @@ export class WorkshopApiError extends Error {
   constructor(
     message: string,
     readonly statusCode: number,
+    /** The daemon error `kind` (e.g. `no-updates-available`), when present. */
+    readonly kind?: string,
   ) {
     super(message);
     this.name = 'WorkshopApiError';
@@ -359,11 +361,12 @@ export class WorkshopClient {
     }
 
     if (envelope.type === 'error' || !isSuccess(status)) {
+      const result = isRecord(envelope.result) ? envelope.result : undefined;
       const message =
-        (isRecord(envelope.result) && typeof envelope.result.message === 'string'
-          ? envelope.result.message
-          : undefined) ?? `workshopd request failed (${status})`;
-      throw new WorkshopApiError(message, status);
+        (typeof result?.message === 'string' ? result.message : undefined) ??
+        `workshopd request failed (${status})`;
+      const kind = typeof result?.kind === 'string' ? result.kind : undefined;
+      throw new WorkshopApiError(message, status, kind);
     }
 
     return envelope;

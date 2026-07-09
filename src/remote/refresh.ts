@@ -4,6 +4,9 @@ import { WorkshopApiError, WorkshopClient } from '../api/client';
 import { Workshop } from '../api/workshops';
 import { ReopenCallbacks, reopenInWorkshop, runAction } from './reopen';
 
+/** Daemon error kind returned when a refresh finds nothing to update. */
+const NO_UPDATES_AVAILABLE = 'no-updates-available';
+
 /** Progress-notification verb shown while each refresh mode runs. */
 const REFRESH_VERB: Record<'wait-on-error' | 'continue' | 'abort', string> = {
   'wait-on-error': 'refreshing…',
@@ -60,16 +63,27 @@ export async function refreshAndReopen(
     },
     async (progress) => {
       progress.report({ message: REFRESH_VERB[mode] });
-      const change = await runAction(
-        client,
-        project.id,
-        workshop.name,
-        'refresh',
-        progress,
-        callbacks,
-        true,
-        { mode },
-      );
+      let change;
+      try {
+        change = await runAction(
+          client,
+          project.id,
+          workshop.name,
+          'refresh',
+          progress,
+          callbacks,
+          true,
+          { mode },
+        );
+      } catch (err) {
+        // "no updates available" isn't a failure: the definition already
+        // matches the running workshop, so there's nothing to refresh. Fall
+        // through to reopening.
+        if (err instanceof WorkshopApiError && err.kind === NO_UPDATES_AVAILABLE) {
+          return;
+        }
+        throw err;
+      }
 
       if (change.status === 'Wait') {
         paused = true;

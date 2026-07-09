@@ -43,11 +43,12 @@ async function captureCommands(body: () => Promise<void>): Promise<CapturedComma
  *   - `'Done'` — successful refresh, `ready: true`
  *   - `'Wait'` — paused mid-refresh (wait-on-error), `ready: false, status: 'Wait'`
  *   - `'Error'` — failed refresh, `ready: true, err: 'build failed'`
+ *   - `'NoUpdates'` — refresh POST rejected with `no-updates-available`
  */
 function startFakeDaemon(
   socketPath: string,
   opts: {
-    refreshStatus: 'Done' | 'Wait' | 'Error';
+    refreshStatus: 'Done' | 'Wait' | 'Error' | 'NoUpdates';
     captureBody?: (body: unknown) => void;
   },
 ): Promise<http.Server> {
@@ -82,6 +83,15 @@ function startFakeDaemon(
       req.on('end', () => {
         const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
         opts.captureBody?.(body);
+        if (opts.refreshStatus === 'NoUpdates') {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            type: 'error',
+            'status-code': 400,
+            result: { message: 'no updates available', kind: 'no-updates-available' },
+          }));
+          return;
+        }
         async202('20', null);
       });
       return;
@@ -150,6 +160,25 @@ suite('refreshAndReopen', () => {
       const uri = (openFolder.args[0] as vscode.Uri).toString();
       assert.ok(uri.includes('web.proj-1.wp'), `URI has hostname: ${uri}`);
       assert.strictEqual(connected, true, 'resolves true on a successful connect');
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  test('ignores no-updates-available and connects anyway', async () => {
+    const server = await startFakeDaemon(socketPath, { refreshStatus: 'NoUpdates' });
+    try {
+      const client = new WorkshopClient({ socketPath });
+      const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready' };
+
+      let connected: boolean | undefined;
+      const commands = await captureCommands(async () => {
+        connected = await refreshAndReopen(client, '/repo', workshop);
+      });
+
+      const openFolder = commands.find((c) => c.command === 'vscode.openFolder');
+      assert.ok(openFolder, 'connected despite no updates available');
+      assert.strictEqual(connected, true, 'resolves true — nothing to refresh, still reopened');
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
