@@ -16,8 +16,10 @@ import { listProjectWorkshops } from '../api/workshops';
 suite('WorkshopClient over a fake workshopd socket', () => {
   let server: http.Server;
   let socketPath: string;
+  let projectPostCount: number;
 
   setup(async () => {
+    projectPostCount = 0;
     socketPath = path.join(
       fs.mkdtempSync(path.join(os.tmpdir(), 'workshopd-')),
       'workshop.socket',
@@ -30,6 +32,7 @@ suite('WorkshopClient over a fake workshopd socket', () => {
       };
 
       if (req.method === 'POST' && req.url === '/v1/projects') {
+        projectPostCount += 1;
         const chunks: Buffer[] = [];
         req.on('data', (c: Buffer) => chunks.push(c));
         req.on('end', () => {
@@ -77,6 +80,20 @@ suite('WorkshopClient over a fake workshopd socket', () => {
   test('errors from the daemon reject with a message', async () => {
     const client = new WorkshopClient({ socketPath });
     await assert.rejects(() => client.listWorkshops('missing'), /not found/);
+  });
+
+  test('ensureProject memoizes the project by path', async () => {
+    const client = new WorkshopClient({ socketPath });
+
+    const a = await client.ensureProject('/repo');
+    const b = await client.ensureProject('/repo');
+
+    assert.deepStrictEqual(a, b);
+    assert.strictEqual(projectPostCount, 1, 'the project is resolved only once');
+
+    // A different path resolves (and POSTs) independently.
+    await client.ensureProject('/other');
+    assert.strictEqual(projectPostCount, 2);
   });
 });
 

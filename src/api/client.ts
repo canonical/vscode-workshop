@@ -33,6 +33,12 @@ export interface WorkshopInfo {
    * network identity.
    */
   hostname?: string;
+  /**
+   * Absolute path to the definition file. Only the single-workshop endpoint
+   * (`GET .../workshops/<name>`) includes it — the `Workshop` struct adds a
+   * `path` field on top of the embedded {@link WorkshopInfo}.
+   */
+  path?: string;
 }
 
 /**
@@ -170,6 +176,12 @@ export interface WorkshopClientOptions {
 export class WorkshopClient {
   private readonly socketPath: string;
   private readonly timeoutMs: number;
+  /**
+   * Memoized project lookups keyed by directory path. A project's id is stable
+   * for a given path, so we cache it to avoid re-POSTing `/v1/projects` on
+   * every poll tick and every action.
+   */
+  private readonly projectCache = new Map<string, Project>();
 
   constructor(options: WorkshopClientOptions = {}) {
     this.socketPath = options.socketPath ?? defaultSocketPath();
@@ -190,10 +202,20 @@ export class WorkshopClient {
   /**
    * Resolve a directory to a project, registering it with the daemon if it
    * isn't known yet. This is the entry point for any per-directory query.
+   *
+   * The result is memoized by path: the project id is stable for a directory,
+   * so repeat callers (the poller, action handlers) reuse it instead of
+   * re-POSTing `/v1/projects` each time.
    */
   async ensureProject(projectPath: string): Promise<Project> {
+    const cached = this.projectCache.get(projectPath);
+    if (cached) {
+      return cached;
+    }
     const result = await this.request('POST', '/v1/projects', { path: projectPath });
-    return result as Project;
+    const project = result as Project;
+    this.projectCache.set(projectPath, project);
+    return project;
   }
 
   /**
@@ -252,7 +274,7 @@ export class WorkshopClient {
   async workshopAction(
     projectId: string,
     names: string[],
-    action: 'start' | 'launch' | 'stop' | 'refresh',
+    action: 'start' | 'launch' | 'stop' | 'refresh' | 'remove',
     options?: {
       mode?: 'transactional' | 'wait-on-error' | 'continue' | 'abort';
       verbose?: boolean;
