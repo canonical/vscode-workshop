@@ -60,6 +60,7 @@ export async function reopenInWorkshop(
 
       // Step 1: bring the workshop online if needed.
       if (action !== 'connect') {
+        progress.report({ message: 'turning on…' });
         const change = await runAction(
           client, project.id, workshop.name, action, progress, callbacks,
           /* verbose */ action === 'launch',

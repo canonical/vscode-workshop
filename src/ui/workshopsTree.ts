@@ -88,6 +88,9 @@ export class WorkshopItem extends vscode.TreeItem {
       this.contextValue = 'workshop-active';
     } else if (workshop.status === 'Pending') {
       this.contextValue = 'workshop-pending';
+    } else if (workshop.status === 'On') {
+      // Ready but not the connected one — can be refreshed and reopened.
+      this.contextValue = 'workshop-ready';
     } else {
       this.contextValue = 'workshop';
     }

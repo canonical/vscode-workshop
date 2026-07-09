@@ -70,7 +70,7 @@
       },
       {
         "command": "workshop.refreshAndReopen",
-        "title": "Refresh and Reopen in Workshop",
+        "title": "Refresh and Reopen",
         "category": "Workshop",
         "icon": "$(sync)"
       },
@@ -110,7 +110,12 @@
       "view/item/context": [
         {
           "command": "workshop.reopenInWorkshop",
-          "when": "view == workshop.workshops && (viewItem == workshop || (viewItem == workshop-waiting && remoteName != 'ssh-remote'))",
+          "when": "view == workshop.workshops && (viewItem == workshop || viewItem == workshop-ready || (viewItem == workshop-waiting && remoteName != 'ssh-remote'))",
+          "group": "inline"
+        },
+        {
+          "command": "workshop.refreshAndReopen",
+          "when": "view == workshop.workshops && (viewItem == workshop-ready || viewItem == workshop-active)",
           "group": "inline"
         },
         {

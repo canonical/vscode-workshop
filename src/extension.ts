@@ -72,31 +72,40 @@ export function activate(context: vscode.ExtensionContext) {
   }
 
   // Watch definition files and prompt to refresh when they change. Active in
-  // both local and in-workshop windows: locally it runs the refresh directly;
-  // inside a workshop it exits to the local window first, then resumes the
-  // refresh-and-reopen there (mirrors the continue/abort deferral).
+  // both local and in-workshop windows: locally the command runs the refresh
+  // directly; inside a workshop it exits to the local window first and resumes
+  // there (handled by workshop.refreshAndReopen / handleRefreshAndReopen).
   context.subscriptions.push(
     createDefinitionWatcher((filePath) => {
-      const workshop = findWorkshopForDefinition(poller.lastValue ?? [], filePath);
-      if (!workshop || !canRefresh(workshop)) {
-        return;
-      }
-      void vscode.window.showInformationMessage(
-        `"${workshop.name}" definition changed. Refresh and reopen?`,
-        'Refresh and Reopen',
-      ).then((choice) => {
-        if (choice !== 'Refresh and Reopen') {
-          return;
-        }
-        if (vscode.env.remoteName === 'ssh-remote') {
-          deferRefreshToLocal(context, workshop.name);
-        } else {
-          void vscode.commands.executeCommand(
-            'workshop.refreshAndReopen',
-            new WorkshopItem(workshop),
+      // Prefer the poller's cache, but fall back to a direct list when it's
+      // empty. Polling is gated on the Workshop view's visibility, so the cache
+      // is empty whenever that panel isn't in front (always the case inside a
+      // workshop, where the Explorer is shown). Without the fallback the prompt
+      // would silently never appear.
+      void resolveChangedWorkshop(client, context, poller.lastValue, filePath)
+        .then((workshop) => {
+          if (!workshop || !canRefresh(workshop)) {
+            return;
+          }
+          return vscode.window.showInformationMessage(
+            `"${workshop.name}" definition changed. Refresh and reopen?`,
+            'Refresh and Reopen',
+          ).then((choice) => {
+            if (choice === 'Refresh and Reopen') {
+              void vscode.commands.executeCommand(
+                'workshop.refreshAndReopen',
+                new WorkshopItem(workshop),
+              );
+            }
+          });
+        })
+        .catch((err: unknown) => {
+          log.debug(
+            `Definition-change prompt skipped: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
           );
-        }
-      });
+        });
     }),
   );
 
@@ -268,6 +277,12 @@ function handleRefreshAndReopen(
     void vscode.window.showErrorMessage('No workspace folder open.');
     return;
   }
+  // Invoked from inside a workshop: exit to the local window first, then resume
+  // the refresh-and-reopen there (the refresh runs against the local daemon).
+  if (vscode.env.remoteName === 'ssh-remote') {
+    deferRefreshToLocal(context, item.workshop.name);
+    return;
+  }
   const logLines: string[] = [];
   refreshAndReopen(
     client,
@@ -302,6 +317,13 @@ interface PendingRefresh {
  * Persist a refresh-and-reopen intent and exit the current workshop window to
  * the local folder, where {@link resumePendingRefresh} picks it up. Used when a
  * definition changes while connected to a workshop.
+ *
+ * The active-workshop marker is intentionally left in place: we bounce out to
+ * the local window only to run the refresh, then reconnect to the *same*
+ * workshop, so it stays "active" the whole time. (The reconnect happens via a
+ * window reload that can kill the extension host before any post-connect state
+ * update runs, so clearing it here would leave the reconnected workshop with no
+ * highlight.)
  */
 function deferRefreshToLocal(context: vscode.ExtensionContext, name: string): void {
   const folder = vscode.workspace.workspaceFolders?.[0];
@@ -315,7 +337,6 @@ function deferRefreshToLocal(context: vscode.ExtensionContext, name: string): vo
     projectPath,
     mode: 'wait-on-error',
   } satisfies PendingRefresh);
-  void context.globalState.update('workshop.activeWorkshopName', undefined);
   void vscode.commands.executeCommand(
     'vscode.openFolder',
     vscode.Uri.file(projectPath),
@@ -340,6 +361,31 @@ function findWorkshopForDefinition(
   return workshops.find(
     (w) => w.definitionPath !== undefined && pathBasename(w.definitionPath) === base,
   );
+}
+
+/**
+ * Resolve the workshop whose definition changed. Tries the poller's cache
+ * first; if that yields nothing (the cache is empty whenever the Workshop view
+ * isn't visible — always so inside a workshop), lists workshops on demand so
+ * the prompt still works regardless of view visibility.
+ */
+async function resolveChangedWorkshop(
+  client: WorkshopClient,
+  context: vscode.ExtensionContext,
+  cached: Workshop[] | undefined,
+  filePath: string,
+): Promise<Workshop | undefined> {
+  const fromCache = findWorkshopForDefinition(cached ?? [], filePath);
+  if (fromCache) {
+    return fromCache;
+  }
+  const folder = vscode.workspace.workspaceFolders?.[0];
+  const projectPath = resolveLocalProjectPath(folder, context.globalState);
+  if (!projectPath) {
+    return undefined;
+  }
+  const workshops = await listProjectWorkshops(client, projectPath);
+  return findWorkshopForDefinition(workshops, filePath);
 }
 
 /** Basename of a path, tolerant of both POSIX and Windows separators. */
