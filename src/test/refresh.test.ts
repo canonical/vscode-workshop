@@ -93,7 +93,13 @@ function startFakeDaemon(
       if (opts.refreshStatus === 'Done') {
         sync({ id: '20', kind: 'refresh', status: 'Done', ready: true, tasks });
       } else if (opts.refreshStatus === 'Wait') {
-        sync({ id: '20', kind: 'refresh', status: 'Wait', ready: false, tasks });
+        // A paused wait-on-error refresh: a task is parked in Wait, unable to
+        // run, and the change parked in Wait alongside it.
+        const failed = [
+          ...tasks,
+          { id: 't2', kind: 'hook', summary: 'Run hook "setup-base" for "oc" SDK', status: 'Wait', log: ['boom'] },
+        ];
+        sync({ id: '20', kind: 'refresh', status: 'Wait', ready: false, tasks: failed });
       } else {
         sync({ id: '20', kind: 'refresh', status: 'Error', ready: true, err: 'build failed', tasks });
       }
@@ -176,6 +182,32 @@ suite('refreshAndReopen', () => {
 
       const openFolder = commands.find((c) => c.command === 'vscode.openFolder');
       assert.ok(openFolder, "connected after onPause resolved 'debug'");
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  test('passes the waiting task descriptions to onPause', async () => {
+    const server = await startFakeDaemon(socketPath, { refreshStatus: 'Wait' });
+    try {
+      const client = new WorkshopClient({ socketPath });
+      const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready' };
+
+      let received: string | undefined;
+      await captureCommands(() =>
+        refreshAndReopen(client, '/repo', workshop, {
+          onPause: (error) => {
+            received = error;
+            return Promise.resolve('dismiss');
+          },
+        }),
+      );
+
+      assert.strictEqual(
+        received,
+        'Cannot perform the following tasks:\n  - Run hook "setup-base" for "oc" SDK',
+        'onPause received the bulleted waiting-task descriptions',
+      );
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }

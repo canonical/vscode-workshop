@@ -46,6 +46,7 @@ export async function refreshAndReopen(
   // Phase 1: run the refresh action with verbose polling so task summaries and
   // log lines are streamed in real time — same approach as launchVerbose.
   let paused = false;
+  let pauseError = '';
   await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
@@ -67,6 +68,16 @@ export async function refreshAndReopen(
 
       if (change.status === 'Wait') {
         paused = true;
+        // The change parked in Wait: one or more tasks are themselves in Wait,
+        // paused before they could run. Surface their descriptions the way the
+        // CLI does — "cannot perform the following tasks:" followed by a
+        // bulleted list of the waiting task summaries.
+        const waiting = (change.tasks ?? [])
+          .filter((t) => t.status === 'Wait' && t.summary)
+          .map((t) => `  - ${t.summary}`);
+        pauseError = waiting.length > 0
+          ? `Cannot perform the following tasks:\n${waiting.join('\n')}`
+          : 'refresh waits on a failing task';
       } else if (change.err) {
         throw new WorkshopApiError(change.err, 0);
       }
@@ -76,7 +87,7 @@ export async function refreshAndReopen(
   // Phase 2: if paused, the refresh failed on a task. Let the caller surface
   // the logs and choose how to proceed.
   if (paused) {
-    const choice = (await callbacks.onPause?.()) ?? 'dismiss';
+    const choice = (await callbacks.onPause?.(pauseError)) ?? 'dismiss';
     if (choice === 'abort') {
       // Unwind the paused refresh and stay put — no connect.
       await refreshAndReopen(client, projectPath, workshop, { onLog: callbacks.onLog }, 'abort', false);

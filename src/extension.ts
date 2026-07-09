@@ -221,14 +221,14 @@ function refreshCallbacks(
 ): ReopenCallbacks {
   return {
     onLog: (lines) => logLines.push(...lines),
-    onPause: async () => {
+    onPause: async (error) => {
       await showWorkshopError(
         log,
         logsView,
         'refresh',
         workshop.name,
         workshop.definitionPath,
-        new Error('refresh paused on the first failing task'),
+        new Error(error),
         logLines,
       );
       const choice = await vscode.window.showInformationMessage(
