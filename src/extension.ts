@@ -69,37 +69,45 @@ export function activate(context: vscode.ExtensionContext) {
           );
         });
     }
-
-    // Watch definition files and prompt to refresh when they change.
-    context.subscriptions.push(
-      createDefinitionWatcher((filePath) => {
-        const workshops = poller.lastValue ?? [];
-        const workshop = workshops.find((w) => w.definitionPath === filePath);
-        if (!workshop || !canRefresh(workshop)) {
-          return;
-        }
-        void vscode.window.showInformationMessage(
-          `"${workshop.name}" definition changed. Refresh and reopen?`,
-          'Refresh and Reopen',
-        ).then((choice) => {
-          if (choice === 'Refresh and Reopen') {
-            void vscode.commands.executeCommand(
-              'workshop.refreshAndReopen',
-              new WorkshopItem(workshop),
-            );
-          }
-        });
-      }),
-    );
   }
 
+  // Watch definition files and prompt to refresh when they change. Active in
+  // both local and in-workshop windows: locally it runs the refresh directly;
+  // inside a workshop it exits to the local window first, then resumes the
+  // refresh-and-reopen there (mirrors the continue/abort deferral).
+  context.subscriptions.push(
+    createDefinitionWatcher((filePath) => {
+      const workshop = findWorkshopForDefinition(poller.lastValue ?? [], filePath);
+      if (!workshop || !canRefresh(workshop)) {
+        return;
+      }
+      void vscode.window.showInformationMessage(
+        `"${workshop.name}" definition changed. Refresh and reopen?`,
+        'Refresh and Reopen',
+      ).then((choice) => {
+        if (choice !== 'Refresh and Reopen') {
+          return;
+        }
+        if (vscode.env.remoteName === 'ssh-remote') {
+          deferRefreshToLocal(context, workshop.name);
+        } else {
+          void vscode.commands.executeCommand(
+            'workshop.refreshAndReopen',
+            new WorkshopItem(workshop),
+          );
+        }
+      });
+    }),
+  );
+
   // If connected via Remote-SSH to a workshop, tell the tree provider which
-  // workshop is active so it can highlight that item, and switch to Explorer.
+  // workshop is active so it can highlight that item. Keep the Workshop view
+  // in front (rather than switching to the Explorer) so its visibility-gated
+  // poller keeps running — the definition watcher relies on that live cache.
   if (vscode.env.remoteName === 'ssh-remote') {
     const activeWorkshop = context.globalState.get<string>('workshop.activeWorkshopName');
     if (activeWorkshop) {
       provider.setActiveWorkshop(activeWorkshop);
-      void vscode.commands.executeCommand('workbench.view.explorer');
     }
   }
 
@@ -267,8 +275,10 @@ function handleRefreshAndReopen(
     item.workshop,
     refreshCallbacks(log, logsView, item.workshop, logLines),
   )
-    .then(() => {
-      void context.globalState.update('workshop.activeWorkshopName', item.workshop.name);
+    .then((connected) => {
+      if (connected) {
+        void context.globalState.update('workshop.activeWorkshopName', item.workshop.name);
+      }
     })
     .catch((err: unknown) => {
       void showWorkshopError(log, logsView, 'refresh and reopen', item.workshop.name, item.workshop.definitionPath, err, logLines);
@@ -276,14 +286,66 @@ function handleRefreshAndReopen(
 }
 
 /**
- * A continue/abort that was requested from inside a workshop and deferred to
- * the local window. Persisted in `globalState` across the window reload that
- * exits the workshop, then consumed on the next local activation.
+ * A refresh requested from inside a workshop and deferred to the local window.
+ * Persisted in `globalState` across the window reload that exits the workshop,
+ * then consumed on the next local activation. Covers both a `continue`/`abort`
+ * of a paused refresh and a plain `wait-on-error` refresh-and-reopen triggered
+ * by a definition change.
  */
 interface PendingRefresh {
   name: string;
   projectPath: string;
-  mode: 'continue' | 'abort';
+  mode: 'wait-on-error' | 'continue' | 'abort';
+}
+
+/**
+ * Persist a refresh-and-reopen intent and exit the current workshop window to
+ * the local folder, where {@link resumePendingRefresh} picks it up. Used when a
+ * definition changes while connected to a workshop.
+ */
+function deferRefreshToLocal(context: vscode.ExtensionContext, name: string): void {
+  const folder = vscode.workspace.workspaceFolders?.[0];
+  const projectPath = resolveLocalProjectPath(folder, context.globalState);
+  if (!projectPath) {
+    void vscode.window.showErrorMessage('No local project path known for this workshop.');
+    return;
+  }
+  void context.globalState.update('workshop.pendingRefresh', {
+    name,
+    projectPath,
+    mode: 'wait-on-error',
+  } satisfies PendingRefresh);
+  void context.globalState.update('workshop.activeWorkshopName', undefined);
+  void vscode.commands.executeCommand(
+    'vscode.openFolder',
+    vscode.Uri.file(projectPath),
+    { forceReuseWindow: true },
+  );
+}
+
+/**
+ * Find the workshop whose definition file changed. Prefers an exact path match;
+ * inside a workshop the watcher reports the remote path while the daemon knows
+ * the definition by its local path, so fall back to matching basenames.
+ */
+function findWorkshopForDefinition(
+  workshops: Workshop[],
+  filePath: string,
+): Workshop | undefined {
+  const exact = workshops.find((w) => w.definitionPath === filePath);
+  if (exact) {
+    return exact;
+  }
+  const base = pathBasename(filePath);
+  return workshops.find(
+    (w) => w.definitionPath !== undefined && pathBasename(w.definitionPath) === base,
+  );
+}
+
+/** Basename of a path, tolerant of both POSIX and Windows separators. */
+function pathBasename(p: string): string {
+  const i = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'));
+  return i >= 0 ? p.slice(i + 1) : p;
 }
 
 /**
@@ -333,9 +395,9 @@ function handleResumeRefresh(
 }
 
 /**
- * Run a refresh in `continue`/`abort` mode. When `reopen` is true it connects
- * into the workshop afterwards and records it as active; otherwise it just runs
- * the action (a local abort stays local).
+ * Run a refresh in `wait-on-error`/`continue`/`abort` mode. Records the
+ * workshop as active only when the refresh actually connected into it — a
+ * paused-and-dismissed, aborted, or `reopen: false` run stays local.
  */
 function runResumeRefresh(
   client: WorkshopClient,
@@ -344,7 +406,7 @@ function runResumeRefresh(
   logsView: LogsView,
   workshop: Workshop,
   projectPath: string,
-  mode: 'continue' | 'abort',
+  mode: 'wait-on-error' | 'continue' | 'abort',
   reopen: boolean,
 ): void {
   const logLines: string[] = [];
@@ -356,13 +418,14 @@ function runResumeRefresh(
     mode,
     reopen,
   )
-    .then(() => {
-      if (reopen) {
+    .then((connected) => {
+      if (connected) {
         void context.globalState.update('workshop.activeWorkshopName', workshop.name);
       }
     })
     .catch((err: unknown) => {
-      void showWorkshopError(log, logsView, `${mode} refresh`, workshop.name, workshop.definitionPath, err, logLines);
+      const action = mode === 'wait-on-error' ? 'refresh and reopen' : `${mode} refresh`;
+      void showWorkshopError(log, logsView, action, workshop.name, workshop.definitionPath, err, logLines);
     });
 }
 

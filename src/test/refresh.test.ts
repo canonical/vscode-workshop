@@ -133,7 +133,10 @@ suite('refreshAndReopen', () => {
       const client = new WorkshopClient({ socketPath });
       const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready' };
 
-      const commands = await captureCommands(() => refreshAndReopen(client, '/repo', workshop));
+      let connected: boolean | undefined;
+      const commands = await captureCommands(async () => {
+        connected = await refreshAndReopen(client, '/repo', workshop);
+      });
 
       // Verify the action body
       assert.strictEqual(capturedBodies.length, 1, 'exactly one POST');
@@ -146,6 +149,7 @@ suite('refreshAndReopen', () => {
       assert.ok(openFolder, 'vscode.openFolder was called');
       const uri = (openFolder.args[0] as vscode.Uri).toString();
       assert.ok(uri.includes('web.proj-1.wp'), `URI has hostname: ${uri}`);
+      assert.strictEqual(connected, true, 'resolves true on a successful connect');
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
@@ -158,9 +162,9 @@ suite('refreshAndReopen', () => {
       const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready' };
       const logLines: string[] = [];
 
-      await captureCommands(() =>
-        refreshAndReopen(client, '/repo', workshop, { onLog: (lines) => logLines.push(...lines) }),
-      );
+      await captureCommands(async () => {
+        await refreshAndReopen(client, '/repo', workshop, { onLog: (lines) => logLines.push(...lines) });
+      });
 
       assert.ok(logLines.length > 0, 'log lines were emitted');
       assert.ok(logLines.includes('step 1'), `expected "step 1" in logs, got: ${logLines.join(', ')}`);
@@ -176,12 +180,14 @@ suite('refreshAndReopen', () => {
       const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready' };
 
       // onPause returns 'debug' → connect for debugging.
-      const commands = await captureCommands(() =>
-        refreshAndReopen(client, '/repo', workshop, { onPause: () => Promise.resolve('debug') }),
-      );
+      let connected: boolean | undefined;
+      const commands = await captureCommands(async () => {
+        connected = await refreshAndReopen(client, '/repo', workshop, { onPause: () => Promise.resolve('debug') });
+      });
 
       const openFolder = commands.find((c) => c.command === 'vscode.openFolder');
       assert.ok(openFolder, "connected after onPause resolved 'debug'");
+      assert.strictEqual(connected, true, 'resolves true when it connected');
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
@@ -194,14 +200,14 @@ suite('refreshAndReopen', () => {
       const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready' };
 
       let received: string | undefined;
-      await captureCommands(() =>
-        refreshAndReopen(client, '/repo', workshop, {
+      await captureCommands(async () => {
+        await refreshAndReopen(client, '/repo', workshop, {
           onPause: (error) => {
             received = error;
             return Promise.resolve('dismiss');
           },
-        }),
-      );
+        });
+      });
 
       assert.strictEqual(
         received,
@@ -220,12 +226,14 @@ suite('refreshAndReopen', () => {
       const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready' };
 
       // onPause returns 'dismiss' → do nothing.
-      const commands = await captureCommands(() =>
-        refreshAndReopen(client, '/repo', workshop, { onPause: () => Promise.resolve('dismiss') }),
-      );
+      let connected: boolean | undefined;
+      const commands = await captureCommands(async () => {
+        connected = await refreshAndReopen(client, '/repo', workshop, { onPause: () => Promise.resolve('dismiss') });
+      });
 
       const openFolder = commands.find((c) => c.command === 'vscode.openFolder');
       assert.strictEqual(openFolder, undefined, "should not connect when onPause resolves 'dismiss'");
+      assert.strictEqual(connected, false, 'resolves false when dismissed');
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
@@ -242,9 +250,10 @@ suite('refreshAndReopen', () => {
       const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready' };
 
       // onPause returns 'abort' → unwind the paused refresh, stay local.
-      const commands = await captureCommands(() =>
-        refreshAndReopen(client, '/repo', workshop, { onPause: () => Promise.resolve('abort') }),
-      );
+      let connected: boolean | undefined;
+      const commands = await captureCommands(async () => {
+        connected = await refreshAndReopen(client, '/repo', workshop, { onPause: () => Promise.resolve('abort') });
+      });
 
       // Two POSTs: the initial wait-on-error refresh, then the abort.
       const modes = capturedBodies.map((b) => (b as { options?: { mode?: string } }).options?.mode);
@@ -252,6 +261,7 @@ suite('refreshAndReopen', () => {
 
       const openFolder = commands.find((c) => c.command === 'vscode.openFolder');
       assert.strictEqual(openFolder, undefined, 'an abort stays local and does not connect');
+      assert.strictEqual(connected, false, 'resolves false when aborted');
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
@@ -263,7 +273,9 @@ suite('refreshAndReopen', () => {
       const client = new WorkshopClient({ socketPath });
       const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready' };
 
-      const commands = await captureCommands(() => refreshAndReopen(client, '/repo', workshop));
+      const commands = await captureCommands(async () => {
+        await refreshAndReopen(client, '/repo', workshop);
+      });
 
       const openFolder = commands.find((c) => c.command === 'vscode.openFolder');
       assert.strictEqual(openFolder, undefined, 'a paused refresh without onPause does not connect');
@@ -279,7 +291,9 @@ suite('refreshAndReopen', () => {
       const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready' };
 
       await assert.rejects(
-        () => captureCommands(() => refreshAndReopen(client, '/repo', workshop)),
+        () => captureCommands(async () => {
+          await refreshAndReopen(client, '/repo', workshop);
+        }),
         (err: Error) => err.message.includes('build failed'),
       );
     } finally {

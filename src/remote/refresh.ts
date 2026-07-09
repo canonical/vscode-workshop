@@ -32,6 +32,11 @@ const REFRESH_VERB: Record<'wait-on-error' | 'continue' | 'abort', string> = {
  * `reopen` controls whether to connect into the workshop afterwards. An
  * `abort` triggered from a local window just unwinds and stays local, so the
  * caller passes `false`; every other path reopens.
+ *
+ * Resolves to `true` when it actually connected into the workshop, `false`
+ * when it returned without connecting (paused-and-dismissed, aborted, or
+ * `reopen` was `false`). Callers use this to decide whether to record the
+ * workshop as the active one.
  */
 export async function refreshAndReopen(
   client: WorkshopClient,
@@ -40,7 +45,7 @@ export async function refreshAndReopen(
   callbacks: ReopenCallbacks = {},
   mode: 'wait-on-error' | 'continue' | 'abort' = 'wait-on-error',
   reopen = true,
-): Promise<void> {
+): Promise<boolean> {
   const project = await client.ensureProject(projectPath);
 
   // Phase 1: run the refresh action with verbose polling so task summaries and
@@ -91,17 +96,19 @@ export async function refreshAndReopen(
     if (choice === 'abort') {
       // Unwind the paused refresh and stay put — no connect.
       await refreshAndReopen(client, projectPath, workshop, { onLog: callbacks.onLog }, 'abort', false);
-      return;
+      return false;
     }
     if (choice !== 'debug') {
-      return;
+      return false;
     }
   }
 
   // Phase 3: connect, unless the caller opted out (e.g. a local abort). The
   // workshop is running after a successful refresh (or the user chose to debug
   // a paused one); reopenInWorkshop just connects.
-  if (reopen) {
-    await reopenInWorkshop(client, projectPath, workshop, callbacks);
+  if (!reopen) {
+    return false;
   }
+  await reopenInWorkshop(client, projectPath, workshop, callbacks);
+  return true;
 }
