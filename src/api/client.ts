@@ -58,8 +58,17 @@ export interface ChangeTask {
   status: string;
   /** Verbose log lines emitted by the task (present when `verbose=true`). */
   log?: string[];
+  /** Completion progress for the task. `total` is 1 for indeterminate work. */
+  progress?: TaskProgress;
   /** Kind-specific data (e.g. an `exec` task carries `exit-code`). */
   data?: Record<string, unknown>;
+}
+
+/** A task's completion progress (see `TaskProgress` in `client/changes.go`). */
+export interface TaskProgress {
+  label: string;
+  done: number;
+  total: number;
 }
 
 /** A daemon change: the async unit of work returned by mutating endpoints. */

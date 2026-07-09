@@ -55,7 +55,7 @@ export async function refreshAndReopen(
   await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
-      title: `Workshop: ${workshop.name}`,
+      title: `${workshop.name}`,
       cancellable: false,
     },
     async (progress) => {

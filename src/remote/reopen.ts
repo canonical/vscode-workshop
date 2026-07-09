@@ -52,7 +52,7 @@ export async function reopenInWorkshop(
   await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
-      title: `Workshop: ${workshop.name}`,
+      title: `${workshop.name}`,
       cancellable: false,
     },
     async (progress) => {
@@ -144,12 +144,22 @@ export async function runAction(
       callbacks.onLog?.(newLines);
     }
 
-    // Show the first active task's description in the notification bubble.
+    // Show the first active task's description in the notification bubble,
+    // appending a `done/total` counter when the task reports determinate
+    // progress (total > 1). We keep the counter in the message rather than
+    // using the notification's `increment` bar: a notification progress bar
+    // can't switch back from determinate to the indeterminate spinner, so a
+    // completed determinate task would leave the bar stuck at 100% for later
+    // tasks that report no progress.
     const doingTask = chg.tasks?.find(
       (t) => t.status === 'Doing' || t.status === 'Undoing',
     );
     if (doingTask?.summary) {
-      progress.report({ message: doingTask.summary });
+      const p = doingTask.progress;
+      const message = p && p.total > 1
+        ? `${doingTask.summary} (${Math.round((p.done / p.total) * 100)}%)`
+        : doingTask.summary;
+      progress.report({ message });
     }
 
     // Exit when done or paused (Wait state from wait-on-error refresh).
