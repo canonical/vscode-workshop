@@ -211,7 +211,7 @@ async function showWorkshopError(
 /**
  * Build the callbacks for a refresh: collect verbose log lines, and on a
  * paused (`Wait`) refresh show those logs — same presentation as a failed
- * launch — then ask whether to connect into the workshop to debug.
+ * launch — then ask whether to reopen for debugging or abort the refresh.
  */
 function refreshCallbacks(
   log: vscode.LogOutputChannel,
@@ -232,10 +232,17 @@ function refreshCallbacks(
         logLines,
       );
       const choice = await vscode.window.showInformationMessage(
-        `"${workshop.name}" refresh failed. Debug in workshop?`,
-        'Debug',
+        `"${workshop.name}" refresh is paused due to a failure. Reopen for debugging, or abort the refresh?`,
+        'Reopen and Debug',
+        'Abort',
       );
-      return choice === 'Debug';
+      if (choice === 'Reopen and Debug') {
+        return 'debug';
+      }
+      if (choice === 'Abort') {
+        return 'abort';
+      }
+      return 'dismiss';
     },
   };
 }

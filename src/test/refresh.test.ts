@@ -163,37 +163,63 @@ suite('refreshAndReopen', () => {
     }
   });
 
-  test('shows connect prompt and connects when refresh pauses (Wait)', async () => {
+  test('connects when onPause returns debug', async () => {
     const server = await startFakeDaemon(socketPath, { refreshStatus: 'Wait' });
     try {
       const client = new WorkshopClient({ socketPath });
       const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready' };
 
-      // onPause returns true → connect for debugging.
+      // onPause returns 'debug' → connect for debugging.
       const commands = await captureCommands(() =>
-        refreshAndReopen(client, '/repo', workshop, { onPause: () => Promise.resolve(true) }),
+        refreshAndReopen(client, '/repo', workshop, { onPause: () => Promise.resolve('debug') }),
       );
 
       const openFolder = commands.find((c) => c.command === 'vscode.openFolder');
-      assert.ok(openFolder, 'connected after onPause resolved true');
+      assert.ok(openFolder, "connected after onPause resolved 'debug'");
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });
 
-  test('does not connect when user cancels the Wait prompt', async () => {
+  test('does not connect when onPause returns dismiss', async () => {
     const server = await startFakeDaemon(socketPath, { refreshStatus: 'Wait' });
     try {
       const client = new WorkshopClient({ socketPath });
       const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready' };
 
-      // onPause returns false → do not connect.
+      // onPause returns 'dismiss' → do nothing.
       const commands = await captureCommands(() =>
-        refreshAndReopen(client, '/repo', workshop, { onPause: () => Promise.resolve(false) }),
+        refreshAndReopen(client, '/repo', workshop, { onPause: () => Promise.resolve('dismiss') }),
       );
 
       const openFolder = commands.find((c) => c.command === 'vscode.openFolder');
-      assert.strictEqual(openFolder, undefined, 'should not connect when onPause resolves false');
+      assert.strictEqual(openFolder, undefined, "should not connect when onPause resolves 'dismiss'");
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  test('runs an abort action and does not connect when onPause returns abort', async () => {
+    const capturedBodies: unknown[] = [];
+    const server = await startFakeDaemon(socketPath, {
+      refreshStatus: 'Wait',
+      captureBody: (b) => capturedBodies.push(b),
+    });
+    try {
+      const client = new WorkshopClient({ socketPath });
+      const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready' };
+
+      // onPause returns 'abort' → unwind the paused refresh, stay local.
+      const commands = await captureCommands(() =>
+        refreshAndReopen(client, '/repo', workshop, { onPause: () => Promise.resolve('abort') }),
+      );
+
+      // Two POSTs: the initial wait-on-error refresh, then the abort.
+      const modes = capturedBodies.map((b) => (b as { options?: { mode?: string } }).options?.mode);
+      assert.deepStrictEqual(modes, ['wait-on-error', 'abort']);
+
+      const openFolder = commands.find((c) => c.command === 'vscode.openFolder');
+      assert.strictEqual(openFolder, undefined, 'an abort stays local and does not connect');
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }

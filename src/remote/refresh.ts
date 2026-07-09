@@ -19,8 +19,8 @@ const REFRESH_VERB: Record<'wait-on-error' | 'continue' | 'abort', string> = {
  *    `verbose=true`, streaming task summaries and log lines while the build
  *    runs — same loop as the `launch` path in {@link reopenInWorkshop}.
  * 2. If the change pauses (`Wait` state) the refresh failed on a task; defer to
- *    {@link ReopenCallbacks.onPause} so the caller can show the logs and decide
- *    whether to connect for debugging.
+ *    {@link ReopenCallbacks.onPause} so the caller can show the logs and choose
+ *    to debug (connect), abort (unwind), or dismiss.
  * 3. On success, call {@link reopenInWorkshop} on the `connect` path (no
  *    second action needed — the workshop is running after a successful refresh).
  *
@@ -74,10 +74,15 @@ export async function refreshAndReopen(
   );
 
   // Phase 2: if paused, the refresh failed on a task. Let the caller surface
-  // the logs and decide whether to connect for debugging.
+  // the logs and choose how to proceed.
   if (paused) {
-    const connect = (await callbacks.onPause?.()) ?? false;
-    if (!connect) {
+    const choice = (await callbacks.onPause?.()) ?? 'dismiss';
+    if (choice === 'abort') {
+      // Unwind the paused refresh and stay put — no connect.
+      await refreshAndReopen(client, projectPath, workshop, { onLog: callbacks.onLog }, 'abort', false);
+      return;
+    }
+    if (choice !== 'debug') {
       return;
     }
   }

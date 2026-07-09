@@ -16,12 +16,17 @@ export interface ReopenCallbacks {
   onLog?: (lines: string[]) => void;
   /**
    * Called when a `wait-on-error` refresh pauses (Wait state) because a task
-   * failed. Lets the caller surface the logs and decide whether to connect
-   * into the paused workshop for debugging. Returns `true` to connect. When
-   * omitted, a paused refresh does not connect.
+   * failed. Lets the caller surface the logs and choose how to proceed:
+   *   - `debug`   — connect into the paused workshop to investigate.
+   *   - `abort`   — unwind the paused refresh (no connect).
+   *   - `dismiss` — leave it paused and do nothing.
+   * When omitted, a paused refresh is treated as `dismiss`.
    */
-  onPause?: () => Promise<boolean>;
+  onPause?: () => Promise<PauseChoice>;
 }
+
+/** How to proceed when a `wait-on-error` refresh pauses on a failure. */
+export type PauseChoice = 'debug' | 'abort' | 'dismiss';
 
 /**
  * Reopen the current VS Code window connected to a workshop over Remote-SSH.
