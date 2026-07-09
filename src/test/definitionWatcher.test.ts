@@ -21,6 +21,13 @@ function installWatcherStub(): {
 
   const original = vscode.workspace.createFileSystemWatcher.bind(vscode.workspace);
 
+  // The watcher no-ops without a workspace folder, so pretend one is open.
+  const originalFolders = Object.getOwnPropertyDescriptor(vscode.workspace, 'workspaceFolders');
+  Object.defineProperty(vscode.workspace, 'workspaceFolders', {
+    configurable: true,
+    get: () => [{ uri: vscode.Uri.file('/repo'), name: 'repo', index: 0 }],
+  });
+
   // Each call to createFileSystemWatcher returns a new fake watcher that
   // records its change/create listeners and exposes fire helpers.
   (vscode.workspace as { createFileSystemWatcher: unknown }).createFileSystemWatcher =
@@ -56,6 +63,9 @@ function installWatcherStub(): {
     watchers,
     restore: () => {
       (vscode.workspace as { createFileSystemWatcher: unknown }).createFileSystemWatcher = original;
+      if (originalFolders) {
+        Object.defineProperty(vscode.workspace, 'workspaceFolders', originalFolders);
+      }
     },
   };
 }

@@ -27,6 +27,13 @@ export function createDefinitionWatcher(
   onChanged: (filePath: string) => void,
   debounceMs = 800,
 ): vscode.Disposable {
+  const folder = vscode.workspace.workspaceFolders?.[0];
+  if (!folder) {
+    // No workspace folder open: there's nothing to watch, and building a
+    // `RelativePattern` with an empty base would watch an unintended location.
+    return new vscode.Disposable(() => { /* no-op */ });
+  }
+
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
 
   function handleChange(uri: vscode.Uri): void {
@@ -56,10 +63,7 @@ export function createDefinitionWatcher(
 
   const watchers = DEFINITION_GLOBS.map((pattern) => {
     const watcher = vscode.workspace.createFileSystemWatcher(
-      new vscode.RelativePattern(
-        vscode.workspace.workspaceFolders?.[0] ?? '',
-        pattern,
-      ),
+      new vscode.RelativePattern(folder, pattern),
     );
     watcher.onDidChange(handleChange);
     watcher.onDidCreate(handleChange);

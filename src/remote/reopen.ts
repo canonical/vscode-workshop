@@ -157,13 +157,19 @@ export async function runAction(
     );
     if (doingTask?.summary) {
       const p = doingTask.progress;
-      const message = p && p.total > 1
-        ? `${doingTask.summary} (${Math.round((p.done / p.total) * 100)}%)`
+      const percent = p && p.total > 1
+        ? Math.min(100, Math.max(0, Math.round((p.done / p.total) * 100)))
+        : undefined;
+      const message = percent !== undefined
+        ? `${doingTask.summary} (${percent}%)`
         : doingTask.summary;
       progress.report({ message });
     }
 
-    // Exit when done or paused (Wait state from wait-on-error refresh).
+    // Exit when done or paused. A change only reaches `Wait` via a
+    // `wait-on-error` operation (which the daemon allows for launch/refresh but
+    // not start/stop/remove), so this is safe for every action: `ready` means
+    // the workshop is up, `Wait` means it paused for the caller to handle.
     if (chg.ready || chg.status === 'Wait') {
       return chg;
     }
