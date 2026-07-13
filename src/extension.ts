@@ -11,6 +11,17 @@ import { refreshAndReopen } from './remote/refresh';
 import { createDefinitionWatcher } from './ui/definitionWatcher';
 import { canRefresh } from './api/workshops';
 import { createOpenPrompt } from './ui/openPrompt';
+import {
+  hostnameFromFolder,
+  readSession,
+  writeSession,
+  clearSession,
+  readPendingOp,
+  writePendingOp,
+  clearPendingOp,
+  resolveLocalProjectPath,
+  PendingOperation,
+} from './state';
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -45,10 +56,12 @@ export function activate(context: vscode.ExtensionContext) {
 
     // An operation triggered from inside a workshop defers to the local window
     // (the extension host restarts on reopen). Resume it here.
-    const pendingOp = context.globalState.get<PendingOperation>('workshop.pendingOperation');
-    if (pendingOp) {
-      void context.globalState.update('workshop.pendingOperation', undefined);
-      void resumePendingOperation(client, context, log, logsView, pendingOp);
+    // Keyed by localPath so only this project's op is consumed — ops from other
+    // projects are invisible to this lookup.
+    const pendingOp = localPath ? readPendingOp(context.globalState, localPath) : undefined;
+    if (pendingOp && localPath) {
+      void clearPendingOp(context.globalState, localPath);
+      void resumePendingOperation(client, context, log, logsView, pendingOp, localPath);
     } else if (localPath) {
       // One-shot prompt if the project has definitions.
       // Fire-and-forget; errors are non-fatal (daemon may not be up yet).
@@ -114,9 +127,11 @@ export function activate(context: vscode.ExtensionContext) {
   // in front (rather than switching to the Explorer) so its visibility-gated
   // poller keeps running — the definition watcher relies on that live cache.
   if (vscode.env.remoteName === 'ssh-remote') {
-    const activeWorkshop = context.globalState.get<string>('workshop.activeWorkshopName');
-    if (activeWorkshop) {
-      provider.setActiveWorkshop(activeWorkshop);
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    const hostname = hostnameFromFolder(folder);
+    const workshopName = hostname ? readSession(context.globalState, hostname)?.workshopName : undefined;
+    if (workshopName) {
+      provider.setActiveWorkshop(workshopName);
     }
   }
 
@@ -158,13 +173,21 @@ export function activate(context: vscode.ExtensionContext) {
       handleReopenInWorkshop(client, context, log, logsView, item),
     ),
     vscode.commands.registerCommand('workshop.reopenLocally', () => {
-      void context.globalState.update('workshop.activeWorkshopName', undefined);
-      const localPath = context.globalState.get<string>('workshop.localProjectPath');
-      if (localPath) {
-        void vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(localPath), { forceReuseWindow: true });
-      } else {
-        void vscode.commands.executeCommand('workbench.action.remote.close');
+      const folder = vscode.workspace.workspaceFolders?.[0];
+      const hostname = hostnameFromFolder(folder);
+      if (!hostname) {
+        void vscode.window.showErrorMessage('Cannot reopen locally: not connected to a workshop.');
+        return;
       }
+      const session = readSession(context.globalState, hostname);
+      if (!session) {
+        void vscode.window.showErrorMessage(
+          'Cannot reopen locally: local project path unknown. Use the Remote Explorer to disconnect.',
+        );
+        return;
+      }
+      void clearSession(context.globalState, hostname);
+      void vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(session.localProjectPath), { forceReuseWindow: true });
     }),
     vscode.commands.registerCommand('workshop.refreshAndReopen', (item: WorkshopItem) =>
       handleRefreshAndReopen(client, context, log, logsView, item),
@@ -293,28 +316,15 @@ function handleRefreshAndReopen(
     item.workshop,
     refreshCallbacks(log, logsView, item.workshop, logLines),
   )
-    .then((connected) => {
-      if (connected) {
-        void context.globalState.update('workshop.activeWorkshopName', item.workshop.name);
+    .then((hostname) => {
+      if (hostname) {
+        void writeSession(context.globalState, hostname, { localProjectPath: projectPath, workshopName: item.workshop.name });
       }
     })
     .catch((err: unknown) => {
       void showWorkshopError(log, logsView, 'refresh and reopen', item.workshop.name, item.workshop.definitionPath, err, logLines);
     });
 }
-
-/**
- * An operation requested from inside a workshop and deferred to the local
- * window. Persisted in `globalState` across the window reload that exits the
- * workshop, then consumed on the next local activation.
- *
- * - `refresh`  — a `continue`/`abort` of a paused refresh, or a plain
- *   `wait-on-error` refresh-and-reopen triggered by a definition change.
- * - `turn-off` — remove the workshop's container after leaving it.
- */
-type PendingOperation =
-  | { kind: 'refresh'; name: string; projectPath: string; mode: 'wait-on-error' | 'continue' | 'abort' }
-  | { kind: 'turn-off'; name: string; projectPath: string };
 
 /**
  * Persist a refresh-and-reopen intent and exit the current workshop window to
@@ -335,10 +345,9 @@ function deferRefreshToLocal(context: vscode.ExtensionContext, name: string): vo
     void vscode.window.showErrorMessage('No local project path known for this workshop.');
     return;
   }
-  void context.globalState.update('workshop.pendingOperation', {
+  void writePendingOp(context.globalState, projectPath, {
     kind: 'refresh',
-    name,
-    projectPath,
+    workshopName: name,
     mode: 'wait-on-error',
   } satisfies PendingOperation);
   void vscode.commands.executeCommand(
@@ -427,13 +436,11 @@ function handleResumeRefresh(
 
   if (vscode.env.remoteName === 'ssh-remote') {
     // Exit to the local window first, then resume there.
-    void context.globalState.update('workshop.pendingOperation', {
+    void writePendingOp(context.globalState, projectPath, {
       kind: 'refresh',
-      name: item.workshop.name,
-      projectPath,
+      workshopName: item.workshop.name,
       mode,
     } satisfies PendingOperation);
-    void context.globalState.update('workshop.activeWorkshopName', undefined);
     void vscode.commands.executeCommand(
       'vscode.openFolder',
       vscode.Uri.file(projectPath),
@@ -469,9 +476,9 @@ function runResumeRefresh(
     mode,
     reopen,
   )
-    .then((connected) => {
-      if (connected) {
-        void context.globalState.update('workshop.activeWorkshopName', workshop.name);
+    .then((hostname) => {
+      if (hostname) {
+        void writeSession(context.globalState, hostname, { localProjectPath: projectPath, workshopName: workshop.name });
       }
     })
     .catch((err: unknown) => {
@@ -489,17 +496,18 @@ async function resumePendingOperation(
   log: vscode.LogOutputChannel,
   logsView: LogsView,
   op: PendingOperation,
+  projectPath: string,
 ): Promise<void> {
   if (op.kind === 'turn-off') {
-    runTurnOff(client, context, log, op.projectPath, op.name);
+    runTurnOff(client, context, log, projectPath, op.workshopName);
     return;
   }
   // A refresh: resolve the workshop model so we can surface its definition
   // path in error logs, then run it (reopening afterwards).
-  let workshop: Workshop = { name: op.name, status: 'Waiting' };
+  let workshop: Workshop = { name: op.workshopName, status: 'Waiting' };
   try {
-    const project = await client.ensureProject(op.projectPath);
-    const info = await client.getWorkshop(project.id, op.name);
+    const project = await client.ensureProject(projectPath);
+    const info = await client.getWorkshop(project.id, op.workshopName);
     workshop = {
       name: info.name,
       status: normalizeStatus(info.status),
@@ -510,7 +518,7 @@ async function resumePendingOperation(
   } catch {
     // Daemon may not be reachable yet; fall back to the minimal model.
   }
-  runResumeRefresh(client, context, log, logsView, workshop, op.projectPath, op.mode, true);
+  runResumeRefresh(client, context, log, logsView, workshop, projectPath, op.mode, true);
 }
 
 function handleReopenInWorkshop(
@@ -530,8 +538,8 @@ function handleReopenInWorkshop(
   const logLines: string[] = [];
   const callbacks: ReopenCallbacks = { onLog: (lines) => logLines.push(...lines) };
   reopenInWorkshop(client, projectPath, item.workshop, callbacks)
-    .then(() => {
-      void context.globalState.update('workshop.activeWorkshopName', item.workshop.name);
+    .then((hostname) => {
+      void writeSession(context.globalState, hostname, { localProjectPath: projectPath, workshopName: item.workshop.name });
     })
     .catch((err: unknown) => {
       void showWorkshopError(log, logsView, 'reopen in workshop', item.workshop.name, item.workshop.definitionPath, err, logLines);
@@ -559,28 +567,28 @@ function handleTurnOff(
     return;
   }
   const name = item.workshop.name;
+  const folder2 = vscode.workspace.workspaceFolders?.[0];
+  const hostname = hostnameFromFolder(folder2);
   const connectedToTarget =
     vscode.env.remoteName === 'ssh-remote' &&
-    context.globalState.get<string>('workshop.activeWorkshopName') === name;
+    hostname !== undefined &&
+    readSession(context.globalState, hostname)?.workshopName === name;
 
   if (connectedToTarget) {
     // Exit to the local window first, then remove there.
-    const localPath = context.globalState.get<string>('workshop.localProjectPath');
-    if (!localPath) {
+    if (!projectPath) {
       void vscode.window.showErrorMessage(
         'Cannot turn off: the local project path for this workshop is unknown.',
       );
       return;
     }
-    void context.globalState.update('workshop.pendingOperation', {
+    void writePendingOp(context.globalState, projectPath, {
       kind: 'turn-off',
-      name,
-      projectPath: localPath,
+      workshopName: name,
     } satisfies PendingOperation);
-    void context.globalState.update('workshop.activeWorkshopName', undefined);
     void vscode.commands.executeCommand(
       'vscode.openFolder',
-      vscode.Uri.file(localPath),
+      vscode.Uri.file(projectPath),
       { forceReuseWindow: true },
     );
     return;
@@ -611,10 +619,6 @@ function runTurnOff(
         progress.report({ message: 'turning off…' });
         const project = await client.ensureProject(projectPath);
         await client.workshopAction(project.id, [name], 'remove');
-        // If this was the connected workshop, drop the active highlight.
-        if (context.globalState.get<string>('workshop.activeWorkshopName') === name) {
-          await context.globalState.update('workshop.activeWorkshopName', undefined);
-        }
       },
     )
     .then(undefined, (err: unknown) => {
@@ -622,24 +626,4 @@ function runTurnOff(
       log.error(`Failed to turn off ${name}: ${message}`);
       void vscode.window.showErrorMessage(`Failed to turn off "${name}": ${message}`);
     });
-}
-
-/**
- * Resolve the local filesystem path for the project in the given workspace
- * folder. When the window is connected via Remote-SSH, `folder.uri` has scheme
- * `vscode-remote` and `fsPath` returns the path inside the container — not a
- * local path the daemon understands. In that case we fall back to the path
- * stored in `globalState` when "Reopen in Workshop" was last invoked.
- */
-function resolveLocalProjectPath(
-  folder: vscode.WorkspaceFolder | undefined,
-  globalState: vscode.Memento,
-): string | undefined {
-  if (!folder) {
-    return undefined;
-  }
-  if (folder.uri.scheme === 'file') {
-    return folder.uri.fsPath;
-  }
-  return globalState.get<string>('workshop.localProjectPath') ?? folder.uri.fsPath;
 }
