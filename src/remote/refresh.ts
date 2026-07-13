@@ -33,10 +33,9 @@ const REFRESH_VERB: Record<'wait-on-error' | 'continue' | 'abort', string> = {
  * `abort` triggered from a local window just unwinds and stays local, so the
  * caller passes `false`; every other path reopens.
  *
- * Resolves to `true` when it actually connected into the workshop, `false`
- * when it returned without connecting (paused-and-dismissed, aborted, or
- * `reopen` was `false`). Callers use this to decide whether to record the
- * workshop as the active one.
+ * Resolves to the SSH hostname when it actually connected into the workshop,
+ * `false` when it returned without connecting (paused-and-dismissed, aborted,
+ * or `reopen` was `false`). Callers use the hostname to record the session.
  */
 export async function refreshAndReopen(
   client: WorkshopClient,
@@ -45,7 +44,7 @@ export async function refreshAndReopen(
   callbacks: ReopenCallbacks = {},
   mode: 'wait-on-error' | 'continue' | 'abort' = 'wait-on-error',
   reopen = true,
-): Promise<boolean> {
+): Promise<string | false> {
   const project = await client.ensureProject(projectPath);
 
   // Phase 1: run the refresh action with verbose polling so task summaries and
@@ -120,6 +119,5 @@ export async function refreshAndReopen(
   if (!reopen) {
     return false;
   }
-  await reopenInWorkshop(client, projectPath, workshop, callbacks);
-  return true;
+  return reopenInWorkshop(client, projectPath, workshop, callbacks);
 }

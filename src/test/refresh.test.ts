@@ -143,7 +143,7 @@ suite('refreshAndReopen', () => {
       const client = new WorkshopClient({ socketPath });
       const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready' };
 
-      let connected: boolean | undefined;
+      let connected: string | false | undefined;
       const commands = await captureCommands(async () => {
         connected = await refreshAndReopen(client, '/repo', workshop);
       });
@@ -159,7 +159,7 @@ suite('refreshAndReopen', () => {
       assert.ok(openFolder, 'vscode.openFolder was called');
       const uri = (openFolder.args[0] as vscode.Uri).toString();
       assert.ok(uri.includes('web.proj-1.wp'), `URI has hostname: ${uri}`);
-      assert.strictEqual(connected, true, 'resolves true on a successful connect');
+      assert.ok(connected, 'resolves the hostname on a successful connect');
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
@@ -171,14 +171,14 @@ suite('refreshAndReopen', () => {
       const client = new WorkshopClient({ socketPath });
       const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready' };
 
-      let connected: boolean | undefined;
+      let connected: string | false | undefined;
       const commands = await captureCommands(async () => {
         connected = await refreshAndReopen(client, '/repo', workshop);
       });
 
       const openFolder = commands.find((c) => c.command === 'vscode.openFolder');
       assert.ok(openFolder, 'connected despite no updates available');
-      assert.strictEqual(connected, true, 'resolves true — nothing to refresh, still reopened');
+      assert.ok(connected, 'resolves the hostname — nothing to refresh, still reopened');
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
@@ -209,14 +209,14 @@ suite('refreshAndReopen', () => {
       const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready' };
 
       // onPause returns 'debug' → connect for debugging.
-      let connected: boolean | undefined;
+      let connected: string | false | undefined;
       const commands = await captureCommands(async () => {
         connected = await refreshAndReopen(client, '/repo', workshop, { onPause: () => Promise.resolve('debug') });
       });
 
       const openFolder = commands.find((c) => c.command === 'vscode.openFolder');
       assert.ok(openFolder, "connected after onPause resolved 'debug'");
-      assert.strictEqual(connected, true, 'resolves true when it connected');
+      assert.ok(connected, 'resolves the hostname when it connected');
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
@@ -255,7 +255,7 @@ suite('refreshAndReopen', () => {
       const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready' };
 
       // onPause returns 'dismiss' → do nothing.
-      let connected: boolean | undefined;
+      let connected: string | false | undefined;
       const commands = await captureCommands(async () => {
         connected = await refreshAndReopen(client, '/repo', workshop, { onPause: () => Promise.resolve('dismiss') });
       });
@@ -279,7 +279,7 @@ suite('refreshAndReopen', () => {
       const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready' };
 
       // onPause returns 'abort' → unwind the paused refresh, stay local.
-      let connected: boolean | undefined;
+      let connected: string | false | undefined;
       const commands = await captureCommands(async () => {
         connected = await refreshAndReopen(client, '/repo', workshop, { onPause: () => Promise.resolve('abort') });
       });

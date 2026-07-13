@@ -40,14 +40,20 @@ export type PauseChoice = 'debug' | 'abort' | 'dismiss';
  * 3. Ensures `~/.ssh/config` includes the workshopd CA config so Remote-SSH
  *    trusts the workshop's host certificate and uses the signed user cert.
  * 4. Calls `openFolder` with `forceReuseWindow: true`.
+ *
+ * Returns the SSH hostname used to open the remote window (e.g.
+ * `'web.proj-1.wp'`).  Callers store this in `globalState` so "Reopen Locally"
+ * can find its way back.
  */
 export async function reopenInWorkshop(
   client: WorkshopClient,
   projectPath: string,
   workshop: Workshop,
   callbacks: ReopenCallbacks = {},
-): Promise<void> {
+): Promise<string> {
   const project = await client.ensureProject(projectPath);
+
+  let connectedHostname = '';
 
   await vscode.window.withProgress(
     {
@@ -78,19 +84,21 @@ export async function reopenInWorkshop(
           `The workshop state may have changed — please try again.`,
         );
       }
-      const hostname = info.hostname;
+      connectedHostname = info.hostname;
 
       // Step 3: ensure workshopd's CA config is included in ~/.ssh/config.
       ensureDaemonSshInclude(client.socket);
 
       // Step 4: reopen in the same window via Remote-SSH.
       progress.report({ message: 'Opening…' });
-      const uri = vscode.Uri.parse(`vscode-remote://ssh-remote+${hostname}/project`);
+      const uri = vscode.Uri.parse(`vscode-remote://ssh-remote+${connectedHostname}/project`);
       await vscode.commands.executeCommand('vscode.openFolder', uri, {
         forceReuseWindow: true,
       });
     },
   );
+
+  return connectedHostname;
 }
 
 /**

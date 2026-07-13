@@ -27,7 +27,7 @@ interface CapturedCommand {
  * Intercept every `vscode.commands.executeCommand` call while `body` runs.
  * Replaces `vscode.openFolder` so the window does not actually reopen.
  */
-async function captureCommands(body: () => Promise<void>): Promise<CapturedCommand[]> {
+async function captureCommands(body: () => Promise<unknown>): Promise<CapturedCommand[]> {
   const original = vscode.commands.executeCommand;
   const captured: CapturedCommand[] = [];
 
@@ -145,7 +145,7 @@ suite('reopenInWorkshop', () => {
       const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready', hostname: 'web.proj-1.wp' };
 
       const commands = await captureCommands(() =>
-        reopenInWorkshop(client, '/repo', workshop),
+        reopenInWorkshop(client, '/repo', workshop).then(() => {}),
       );
 
       const openFolder = commands.find((c) => c.command === 'vscode.openFolder');
@@ -155,6 +155,20 @@ suite('reopenInWorkshop', () => {
       assert.ok(uriStr.includes('web.proj-1.wp'), `URI contains hostname, got: ${uriStr}`);
       assert.ok(uriStr.includes('ssh-remote'), `URI uses ssh-remote scheme, got: ${uriStr}`);
       assert.deepStrictEqual(openFolder.args[1], { forceReuseWindow: true });
+    } finally {
+      wss.close();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  test('returns the hostname used to open the SSH window', async () => {
+    const { server, wss } = await startFakeDaemon(socketPath, {});
+    try {
+      const client = new WorkshopClient({ socketPath });
+      const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready', hostname: 'web.proj-1.wp' };
+      let hostname = '';
+      await captureCommands(async () => { hostname = await reopenInWorkshop(client, '/repo', workshop); });
+      assert.strictEqual(hostname, 'web.proj-1.wp');
     } finally {
       wss.close();
       await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -185,7 +199,7 @@ suite('reopenInWorkshop', () => {
       const client = new WorkshopClient({ socketPath });
       const workshop: Workshop = { name: 'web', status: 'Off', rawStatus: 'stopped' };
 
-      await captureCommands(() => reopenInWorkshop(client, '/repo', workshop));
+      await captureCommands(() => reopenInWorkshop(client, '/repo', workshop).then(() => {}));
 
       assert.ok(actionBodies.length > 0, 'a lifecycle action was POSTed');
       const body = actionBodies[0] as { action: string; names: string[] };
@@ -216,7 +230,7 @@ suite('reopenInWorkshop', () => {
       const client = new WorkshopClient({ socketPath });
       const workshop: Workshop = { name: 'web', status: 'Off' }; // definition-only
 
-      await captureCommands(() => reopenInWorkshop(client, '/repo', workshop));
+      await captureCommands(() => reopenInWorkshop(client, '/repo', workshop).then(() => {}));
 
       assert.ok(actionBodies.length > 0, 'a lifecycle action was POSTed');
       const body = actionBodies[0] as { action: string };
