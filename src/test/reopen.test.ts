@@ -142,10 +142,10 @@ suite('reopenInWorkshop', () => {
     const { server, wss } = await startFakeDaemon(socketPath, {});
     try {
       const client = new WorkshopClient({ socketPath });
-      const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready', hostname: 'web.proj-1.wp' };
+      const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready', hostname: 'web.proj-1.wp', projectId: 'proj-1' };
 
       const commands = await captureCommands(() =>
-        reopenInWorkshop(client, '/repo', workshop).then(() => {}),
+        reopenInWorkshop(client, workshop),
       );
 
       const openFolder = commands.find((c) => c.command === 'vscode.openFolder');
@@ -165,9 +165,9 @@ suite('reopenInWorkshop', () => {
     const { server, wss } = await startFakeDaemon(socketPath, {});
     try {
       const client = new WorkshopClient({ socketPath });
-      const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready', hostname: 'web.proj-1.wp' };
+      const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready', hostname: 'web.proj-1.wp', projectId: 'proj-1' };
       let hostname = '';
-      await captureCommands(async () => { hostname = await reopenInWorkshop(client, '/repo', workshop); });
+      await captureCommands(async () => { hostname = await reopenInWorkshop(client, workshop); });
       assert.strictEqual(hostname, 'web.proj-1.wp');
     } finally {
       wss.close();
@@ -197,9 +197,9 @@ suite('reopenInWorkshop', () => {
 
     try {
       const client = new WorkshopClient({ socketPath });
-      const workshop: Workshop = { name: 'web', status: 'Off', rawStatus: 'stopped' };
+      const workshop: Workshop = { name: 'web', status: 'Off', rawStatus: 'stopped', projectId: 'proj-1' };
 
-      await captureCommands(() => reopenInWorkshop(client, '/repo', workshop).then(() => {}));
+      await captureCommands(() => reopenInWorkshop(client, workshop));
 
       assert.ok(actionBodies.length > 0, 'a lifecycle action was POSTed');
       const body = actionBodies[0] as { action: string; names: string[] };
@@ -228,9 +228,9 @@ suite('reopenInWorkshop', () => {
 
     try {
       const client = new WorkshopClient({ socketPath });
-      const workshop: Workshop = { name: 'web', status: 'Off' }; // definition-only
+      const workshop: Workshop = { name: 'web', status: 'Off', projectId: 'proj-1' }; // definition-only
 
-      await captureCommands(() => reopenInWorkshop(client, '/repo', workshop).then(() => {}));
+      await captureCommands(() => reopenInWorkshop(client, workshop));
 
       assert.ok(actionBodies.length > 0, 'a lifecycle action was POSTed');
       const body = actionBodies[0] as { action: string };

@@ -6,7 +6,7 @@ import * as fs from 'fs';
 import * as vscode from 'vscode';
 
 import { WorkshopClient } from '../api/client';
-import { refreshAndReopen } from '../refresh';
+import { refreshAndReopen } from '../reopen';
 import { Workshop } from '../api/workshops';
 
 // ---------------------------------------------------------------------------
@@ -141,11 +141,11 @@ suite('refreshAndReopen', () => {
     });
     try {
       const client = new WorkshopClient({ socketPath });
-      const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready' };
+      const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready', projectId: 'proj-1' };
 
       let connected: string | false | undefined;
       const commands = await captureCommands(async () => {
-        connected = await refreshAndReopen(client, '/repo', workshop);
+        connected = await refreshAndReopen(client, workshop);
       });
 
       // Verify the action body
@@ -169,11 +169,11 @@ suite('refreshAndReopen', () => {
     const server = await startFakeDaemon(socketPath, { refreshStatus: 'NoUpdates' });
     try {
       const client = new WorkshopClient({ socketPath });
-      const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready' };
+      const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready', projectId: 'proj-1' };
 
       let connected: string | false | undefined;
       const commands = await captureCommands(async () => {
-        connected = await refreshAndReopen(client, '/repo', workshop);
+        connected = await refreshAndReopen(client, workshop);
       });
 
       const openFolder = commands.find((c) => c.command === 'vscode.openFolder');
@@ -188,11 +188,11 @@ suite('refreshAndReopen', () => {
     const server = await startFakeDaemon(socketPath, { refreshStatus: 'Done' });
     try {
       const client = new WorkshopClient({ socketPath });
-      const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready' };
+      const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready', projectId: 'proj-1' };
       const logLines: string[] = [];
 
       await captureCommands(async () => {
-        await refreshAndReopen(client, '/repo', workshop, { onLog: (lines) => logLines.push(...lines) });
+        await refreshAndReopen(client, workshop, { onLog: (lines) => logLines.push(...lines) });
       });
 
       assert.ok(logLines.length > 0, 'log lines were emitted');
@@ -206,12 +206,12 @@ suite('refreshAndReopen', () => {
     const server = await startFakeDaemon(socketPath, { refreshStatus: 'Wait' });
     try {
       const client = new WorkshopClient({ socketPath });
-      const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready' };
+      const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready', projectId: 'proj-1' };
 
       // onPause returns 'debug' → connect for debugging.
       let connected: string | false | undefined;
       const commands = await captureCommands(async () => {
-        connected = await refreshAndReopen(client, '/repo', workshop, { onPause: () => Promise.resolve('debug') });
+        connected = await refreshAndReopen(client, workshop, { onPause: () => Promise.resolve('debug') });
       });
 
       const openFolder = commands.find((c) => c.command === 'vscode.openFolder');
@@ -226,11 +226,11 @@ suite('refreshAndReopen', () => {
     const server = await startFakeDaemon(socketPath, { refreshStatus: 'Wait' });
     try {
       const client = new WorkshopClient({ socketPath });
-      const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready' };
+      const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready', projectId: 'proj-1' };
 
       let received: string | undefined;
       await captureCommands(async () => {
-        await refreshAndReopen(client, '/repo', workshop, {
+        await refreshAndReopen(client, workshop, {
           onPause: (error) => {
             received = error;
             return Promise.resolve('dismiss');
@@ -252,12 +252,12 @@ suite('refreshAndReopen', () => {
     const server = await startFakeDaemon(socketPath, { refreshStatus: 'Wait' });
     try {
       const client = new WorkshopClient({ socketPath });
-      const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready' };
+      const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready', projectId: 'proj-1' };
 
       // onPause returns 'dismiss' → do nothing.
       let connected: string | false | undefined;
       const commands = await captureCommands(async () => {
-        connected = await refreshAndReopen(client, '/repo', workshop, { onPause: () => Promise.resolve('dismiss') });
+        connected = await refreshAndReopen(client, workshop, { onPause: () => Promise.resolve('dismiss') });
       });
 
       const openFolder = commands.find((c) => c.command === 'vscode.openFolder');
@@ -276,12 +276,12 @@ suite('refreshAndReopen', () => {
     });
     try {
       const client = new WorkshopClient({ socketPath });
-      const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready' };
+      const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready', projectId: 'proj-1' };
 
       // onPause returns 'abort' → unwind the paused refresh, stay local.
       let connected: string | false | undefined;
       const commands = await captureCommands(async () => {
-        connected = await refreshAndReopen(client, '/repo', workshop, { onPause: () => Promise.resolve('abort') });
+        connected = await refreshAndReopen(client, workshop, { onPause: () => Promise.resolve('abort') });
       });
 
       // Two POSTs: the initial wait-on-error refresh, then the abort.
@@ -300,10 +300,10 @@ suite('refreshAndReopen', () => {
     const server = await startFakeDaemon(socketPath, { refreshStatus: 'Wait' });
     try {
       const client = new WorkshopClient({ socketPath });
-      const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready' };
+      const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready', projectId: 'proj-1' };
 
       const commands = await captureCommands(async () => {
-        await refreshAndReopen(client, '/repo', workshop);
+        await refreshAndReopen(client, workshop);
       });
 
       const openFolder = commands.find((c) => c.command === 'vscode.openFolder');
@@ -317,11 +317,11 @@ suite('refreshAndReopen', () => {
     const server = await startFakeDaemon(socketPath, { refreshStatus: 'Error' });
     try {
       const client = new WorkshopClient({ socketPath });
-      const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready' };
+      const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready', projectId: 'proj-1' };
 
       await assert.rejects(
         () => captureCommands(async () => {
-          await refreshAndReopen(client, '/repo', workshop);
+          await refreshAndReopen(client, workshop);
         }),
         (err: Error) => err.message.includes('build failed'),
       );

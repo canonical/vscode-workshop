@@ -9,7 +9,6 @@ import {
   readPendingOp,
   writePendingOp,
   clearPendingOp,
-  resolveLocalProjectPath,
   SESSIONS_KEY,
   PENDING_OPS_KEY,
   WorkshopSession,
@@ -102,14 +101,14 @@ suite('session helpers', () => {
   });
 
   test('writeSession persists session keyed by hostname', async () => {
-    const session: WorkshopSession = { localProjectPath: '/home/user/p', workshopName: 'web' };
+    const session: WorkshopSession = { projectId: 'proj-1', workshopName: 'web' };
     await writeSession(state, 'web.proj-1.wp', session);
     assert.deepStrictEqual(readSession(state, 'web.proj-1.wp'), session);
   });
 
   test('writeSession does not clobber other hostnames', async () => {
-    const s1: WorkshopSession = { localProjectPath: '/a', workshopName: 'web' };
-    const s2: WorkshopSession = { localProjectPath: '/b', workshopName: 'api' };
+    const s1: WorkshopSession = { projectId: 'proj-1', workshopName: 'web' };
+    const s2: WorkshopSession = { projectId: 'proj-2', workshopName: 'api' };
     await writeSession(state, 'host-1.wp', s1);
     await writeSession(state, 'host-2.wp', s2);
     assert.deepStrictEqual(readSession(state, 'host-1.wp'), s1);
@@ -117,14 +116,14 @@ suite('session helpers', () => {
   });
 
   test('clearSession removes the hostname entry', async () => {
-    await writeSession(state, 'web.proj-1.wp', { localProjectPath: '/p', workshopName: 'web' });
+    await writeSession(state, 'web.proj-1.wp', { projectId: 'proj-1', workshopName: 'web' });
     await clearSession(state, 'web.proj-1.wp');
     assert.strictEqual(readSession(state, 'web.proj-1.wp'), undefined);
   });
 
   test('clearSession leaves other hostnames intact', async () => {
-    const s1: WorkshopSession = { localProjectPath: '/a', workshopName: 'web' };
-    const s2: WorkshopSession = { localProjectPath: '/b', workshopName: 'api' };
+    const s1: WorkshopSession = { projectId: 'proj-1', workshopName: 'web' };
+    const s2: WorkshopSession = { projectId: 'proj-2', workshopName: 'api' };
     await writeSession(state, 'host-1.wp', s1);
     await writeSession(state, 'host-2.wp', s2);
     await clearSession(state, 'host-1.wp');
@@ -133,7 +132,7 @@ suite('session helpers', () => {
   });
 
   test('clearSession on last entry removes the key entirely', async () => {
-    await writeSession(state, 'web.proj-1.wp', { localProjectPath: '/p', workshopName: 'web' });
+    await writeSession(state, 'web.proj-1.wp', { projectId: 'proj-1', workshopName: 'web' });
     await clearSession(state, 'web.proj-1.wp');
     assert.strictEqual(state.get(SESSIONS_KEY), undefined);
   });
@@ -149,78 +148,42 @@ suite('pendingOp helpers', () => {
   setup(() => { state = new MemoryMemento(); });
 
   test('readPendingOp returns undefined when nothing stored', () => {
-    assert.strictEqual(readPendingOp(state, '/home/user/project'), undefined);
+    assert.strictEqual(readPendingOp(state, 'proj-1'), undefined);
   });
 
-  test('writePendingOp persists op keyed by localProjectPath', async () => {
-    const op: PendingOperation = { kind: 'refresh', workshopName: 'web', mode: 'continue' };
-    await writePendingOp(state, '/home/user/project', op);
-    assert.deepStrictEqual(readPendingOp(state, '/home/user/project'), op);
+  test('writePendingOp persists op keyed by projectId', async () => {
+    const op: PendingOperation = { kind: 'refresh', workshopName: 'web', projectId: 'proj-1', mode: 'continue' };
+    await writePendingOp(state, 'proj-1', op);
+    assert.deepStrictEqual(readPendingOp(state, 'proj-1'), op);
   });
 
-  test('writePendingOp does not clobber other paths', async () => {
-    const op1: PendingOperation = { kind: 'refresh', workshopName: 'web', mode: 'continue' };
-    const op2: PendingOperation = { kind: 'turn-off', workshopName: 'api' };
-    await writePendingOp(state, '/project-a', op1);
-    await writePendingOp(state, '/project-b', op2);
-    assert.deepStrictEqual(readPendingOp(state, '/project-a'), op1);
-    assert.deepStrictEqual(readPendingOp(state, '/project-b'), op2);
+  test('writePendingOp does not clobber other projects', async () => {
+    const op1: PendingOperation = { kind: 'refresh', workshopName: 'web', projectId: 'proj-1', mode: 'continue' };
+    const op2: PendingOperation = { kind: 'turn-off', workshopName: 'api', projectId: 'proj-2' };
+    await writePendingOp(state, 'proj-1', op1);
+    await writePendingOp(state, 'proj-2', op2);
+    assert.deepStrictEqual(readPendingOp(state, 'proj-1'), op1);
+    assert.deepStrictEqual(readPendingOp(state, 'proj-2'), op2);
   });
 
-  test('clearPendingOp removes the path entry', async () => {
-    await writePendingOp(state, '/project', { kind: 'turn-off', workshopName: 'web' });
-    await clearPendingOp(state, '/project');
-    assert.strictEqual(readPendingOp(state, '/project'), undefined);
+  test('clearPendingOp removes the project entry', async () => {
+    await writePendingOp(state, 'proj-1', { kind: 'turn-off', workshopName: 'web', projectId: 'proj-1' });
+    await clearPendingOp(state, 'proj-1');
+    assert.strictEqual(readPendingOp(state, 'proj-1'), undefined);
   });
 
-  test('clearPendingOp leaves other paths intact', async () => {
-    const op: PendingOperation = { kind: 'turn-off', workshopName: 'api' };
-    await writePendingOp(state, '/project-a', { kind: 'turn-off', workshopName: 'web' });
-    await writePendingOp(state, '/project-b', op);
-    await clearPendingOp(state, '/project-a');
-    assert.strictEqual(readPendingOp(state, '/project-a'), undefined);
-    assert.deepStrictEqual(readPendingOp(state, '/project-b'), op);
+  test('clearPendingOp leaves other projects intact', async () => {
+    const op: PendingOperation = { kind: 'turn-off', workshopName: 'api', projectId: 'proj-2' };
+    await writePendingOp(state, 'proj-1', { kind: 'turn-off', workshopName: 'web', projectId: 'proj-1' });
+    await writePendingOp(state, 'proj-2', op);
+    await clearPendingOp(state, 'proj-1');
+    assert.strictEqual(readPendingOp(state, 'proj-1'), undefined);
+    assert.deepStrictEqual(readPendingOp(state, 'proj-2'), op);
   });
 
   test('clearPendingOp on last entry removes the key entirely', async () => {
-    await writePendingOp(state, '/project', { kind: 'turn-off', workshopName: 'web' });
-    await clearPendingOp(state, '/project');
+    await writePendingOp(state, 'proj-1', { kind: 'turn-off', workshopName: 'web', projectId: 'proj-1' });
+    await clearPendingOp(state, 'proj-1');
     assert.strictEqual(state.get(PENDING_OPS_KEY), undefined);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// resolveLocalProjectPath
-// ---------------------------------------------------------------------------
-
-suite('resolveLocalProjectPath', () => {
-  let state: MemoryMemento;
-
-  setup(() => { state = new MemoryMemento(); });
-
-  test('returns undefined when folder is undefined', () => {
-    assert.strictEqual(resolveLocalProjectPath(undefined, state), undefined);
-  });
-
-  test('returns fsPath for a local file:// folder', () => {
-    assert.strictEqual(
-      resolveLocalProjectPath(localFolder('/home/user/project'), state),
-      '/home/user/project',
-    );
-  });
-
-  test('returns localProjectPath from session for an SSH folder', async () => {
-    await writeSession(state, 'web.proj-1.wp', { localProjectPath: '/host/project', workshopName: 'web' });
-    assert.strictEqual(
-      resolveLocalProjectPath(sshFolder('web.proj-1.wp'), state),
-      '/host/project',
-    );
-  });
-
-  test('returns undefined for SSH folder with no session', () => {
-    assert.strictEqual(
-      resolveLocalProjectPath(sshFolder('web.proj-1.wp'), state),
-      undefined,
-    );
   });
 });

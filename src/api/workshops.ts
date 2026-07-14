@@ -49,6 +49,12 @@ export interface Workshop {
    *   - `workshop.yaml` (single-workshop project, root level)
    */
   definitionPath?: string;
+  /**
+   * The daemon project ID for this workshop's project directory. Set by
+   * {@link listProjectWorkshops}; absent on synthetic Workshop objects created
+   * before a project lookup has occurred.
+   */
+  projectId: string;
 }
 
 /**
@@ -89,11 +95,11 @@ export function reopenAction(workshop: Workshop): ReopenAction {
  * list. Launched workshops carry a live status; definition files that have no
  * matching live workshop are surfaced as `Off`, mirroring the old behaviour.
  */
-export function mergeWorkshops(response: WorkshopsResponse): Workshop[] {
+export function mergeWorkshops(response: WorkshopsResponse, projectId: string): Workshop[] {
   const byName = new Map<string, Workshop>();
 
   for (const file of response.files ?? []) {
-    byName.set(file.name, { name: file.name, status: 'Off', definitionPath: file.path });
+    byName.set(file.name, { name: file.name, status: 'Off', definitionPath: file.path, projectId });
   }
   for (const workshop of response.workshops ?? []) {
     byName.set(workshop.name, {
@@ -103,6 +109,7 @@ export function mergeWorkshops(response: WorkshopsResponse): Workshop[] {
       rawStatus: workshop.status,
       hostname: workshop.hostname,
       definitionPath: byName.get(workshop.name)?.definitionPath,
+      projectId,
     });
   }
 
@@ -110,14 +117,14 @@ export function mergeWorkshops(response: WorkshopsResponse): Workshop[] {
 }
 
 /**
- * High-level helper: resolve a directory to a project and return its merged,
- * sorted workshop list.
+ * High-level helper: list the merged workshops for a project, given its daemon
+ * project ID. Callers that only have a local path should call
+ * {@link WorkshopClient.ensureProject} first to resolve the ID.
  */
 export async function listProjectWorkshops(
   client: WorkshopClient,
-  projectPath: string,
+  projectId: string,
 ): Promise<Workshop[]> {
-  const project = await client.ensureProject(projectPath);
-  const response = await client.listWorkshops(project.id);
-  return mergeWorkshops(response);
+  const response = await client.listWorkshops(projectId);
+  return mergeWorkshops(response, projectId);
 }

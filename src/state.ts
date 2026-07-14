@@ -13,8 +13,8 @@ import * as vscode from 'vscode';
  * different projects never overwrite each other.
  */
 export interface WorkshopSession {
-  /** Absolute local path to the project directory on the host machine. */
-  localProjectPath: string;
+  /** The daemon project ID for this workshop's project directory. */
+  projectId: string;
   /** Workshop name (e.g. `'web'`). */
   workshopName: string;
 }
@@ -26,8 +26,8 @@ export interface WorkshopSession {
  * project — stale ops from other projects are structurally invisible.
  */
 export type PendingOperation =
-  | { kind: 'refresh'; workshopName: string; mode: 'wait-on-error' | 'continue' | 'abort' }
-  | { kind: 'turn-off'; workshopName: string };
+  | { kind: 'refresh'; workshopName: string; projectId: string; mode: 'wait-on-error' | 'continue' | 'abort' }
+  | { kind: 'turn-off'; workshopName: string; projectId: string };
 
 // ---------------------------------------------------------------------------
 // globalState key constants
@@ -95,63 +95,35 @@ export function clearSession(
 // Pending-operation helpers
 // ---------------------------------------------------------------------------
 
-/** Read the pending operation for the given local project path, or `undefined`. */
+/** Read the pending operation for the given project ID, or `undefined`. */
 export function readPendingOp(
   globalState: vscode.Memento,
-  localProjectPath: string,
+  projectId: string,
 ): PendingOperation | undefined {
   const all = globalState.get<Record<string, PendingOperation>>(PENDING_OPS_KEY) ?? {};
-  return all[localProjectPath];
+  return all[projectId];
 }
 
-/** Persist a pending operation for the given local project path. */
+/** Persist a pending operation for the given project ID. */
 export function writePendingOp(
   globalState: vscode.Memento,
-  localProjectPath: string,
+  projectId: string,
   op: PendingOperation,
 ): Thenable<void> {
   const all = globalState.get<Record<string, PendingOperation>>(PENDING_OPS_KEY) ?? {};
-  return globalState.update(PENDING_OPS_KEY, { ...all, [localProjectPath]: op });
+  return globalState.update(PENDING_OPS_KEY, { ...all, [projectId]: op });
 }
 
-/** Remove the pending operation for the given local project path. */
+/** Remove the pending operation for the given project ID. */
 export function clearPendingOp(
   globalState: vscode.Memento,
-  localProjectPath: string,
+  projectId: string,
 ): Thenable<void> {
   const all = globalState.get<Record<string, PendingOperation>>(PENDING_OPS_KEY) ?? {};
-  const { [localProjectPath]: _removed, ...rest } = all;
+  const { [projectId]: _removed, ...rest } = all;
   return globalState.update(PENDING_OPS_KEY, Object.keys(rest).length > 0 ? rest : undefined);
 }
 
 // ---------------------------------------------------------------------------
 // Path resolution
 // ---------------------------------------------------------------------------
-
-/**
- * Resolve the local filesystem path for the project open in the given
- * workspace folder.
- *
- * - **Local window** (`folder.uri.scheme === 'file'`): returns `folder.uri.fsPath`.
- * - **Remote-SSH window** (`vscode-remote` scheme): looks up the session record
- *   by hostname to recover the local path stored when the window was opened.
- *   Returns `undefined` if no session exists (window opened via some other
- *   means, e.g. the Remote Explorer).
- * - Returns `undefined` when no folder is open.
- */
-export function resolveLocalProjectPath(
-  folder: vscode.WorkspaceFolder | undefined,
-  globalState: vscode.Memento,
-): string | undefined {
-  if (!folder) {
-    return undefined;
-  }
-  if (folder.uri.scheme === 'file') {
-    return folder.uri.fsPath;
-  }
-  const hostname = hostnameFromFolder(folder);
-  if (!hostname) {
-    return undefined;
-  }
-  return readSession(globalState, hostname)?.localProjectPath;
-}

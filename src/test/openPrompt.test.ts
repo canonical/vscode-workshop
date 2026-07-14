@@ -3,7 +3,7 @@ import { createOpenPrompt, pickWorkshop } from '../ui/openPrompt';
 import { Workshop } from '../api/workshops';
 
 function makeWorkshop(name: string, definitionPath: string): Workshop {
-  return { name, status: 'Off', definitionPath };
+  return { name, status: 'Off', definitionPath, projectId: 'proj-1' };
 }
 
 // ---------------------------------------------------------------------------
@@ -40,7 +40,7 @@ suite('createOpenPrompt', () => {
 
   test('returns false and shows nothing when there are no definitions', async () => {
     const workshops: Workshop[] = [
-      { name: 'x', status: 'Off' }, // no definitionPath
+      { name: 'x', status: 'Off', projectId: 'proj-1' }, // no definitionPath
     ];
     let shown = false;
     const result = await createOpenPrompt({
@@ -137,7 +137,7 @@ suite('createOpenPrompt', () => {
 
   test('filters out workshops without a definitionPath', async () => {
     // The running workshop (no definitionPath) should not be offered.
-    const running: Workshop = { name: 'ci', status: 'On', rawStatus: 'ready', hostname: 'ci.wp' };
+    const running: Workshop = { name: 'ci', status: 'On', rawStatus: 'ready', hostname: 'ci.wp', projectId: 'proj-1' };
     const defined = makeWorkshop('dev', '/repo/workshop.yaml');
 
     const passed: Workshop[][] = [];

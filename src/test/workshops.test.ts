@@ -30,12 +30,12 @@ suite('workshops model', () => {
         // gamma only exists on disk -> Off.
         { 'project-id': 'p', name: 'gamma', path: '/x/gamma.yaml' },
       ],
-    });
+    }, 'p');
 
     assert.deepStrictEqual(merged, [
-      { name: 'alpha', status: 'Waiting', rawStatus: 'waiting', hostname: undefined, definitionPath: '/x/alpha.yaml' },
-      { name: 'beta', status: 'On', rawStatus: 'ready', hostname: 'beta.p.wp', definitionPath: undefined },
-      { name: 'gamma', status: 'Off', definitionPath: '/x/gamma.yaml' },
+      { name: 'alpha', status: 'Waiting', rawStatus: 'waiting', hostname: undefined, definitionPath: '/x/alpha.yaml', projectId: 'p' },
+      { name: 'beta', status: 'On', rawStatus: 'ready', hostname: 'beta.p.wp', definitionPath: undefined, projectId: 'p' },
+      { name: 'gamma', status: 'Off', definitionPath: '/x/gamma.yaml', projectId: 'p' },
     ]);
   });
 
@@ -45,37 +45,37 @@ suite('workshops model', () => {
         { 'project-id': 'p', name: 'stopped-one', status: 'stopped' },
         { 'project-id': 'p', name: 'off-one', status: 'off' },
       ],
-    });
+    }, 'p');
 
     assert.deepStrictEqual(merged, [
-      { name: 'off-one', status: 'Off', rawStatus: 'off', hostname: undefined, definitionPath: undefined },
-      { name: 'stopped-one', status: 'Off', rawStatus: 'stopped', hostname: undefined, definitionPath: undefined },
+      { name: 'off-one', status: 'Off', rawStatus: 'off', hostname: undefined, definitionPath: undefined, projectId: 'p' },
+      { name: 'stopped-one', status: 'Off', rawStatus: 'stopped', hostname: undefined, definitionPath: undefined, projectId: 'p' },
     ]);
   });
 
   test('mergeWorkshops tolerates empty response', () => {
-    assert.deepStrictEqual(mergeWorkshops({}), []);
+    assert.deepStrictEqual(mergeWorkshops({}, 'p'), []);
   });
 });
 
 suite('reopenAction', () => {
   test('running workshops connect directly', () => {
-    assert.strictEqual(reopenAction({ name: 'a', status: 'On', rawStatus: 'ready' }), 'connect');
+    assert.strictEqual(reopenAction({ name: 'a', status: 'On', rawStatus: 'ready', projectId: 'p' }), 'connect');
     assert.strictEqual(
-      reopenAction({ name: 'a', status: 'Waiting', rawStatus: 'waiting' }),
+      reopenAction({ name: 'a', status: 'Waiting', rawStatus: 'waiting', projectId: 'p' }),
       'connect',
     );
   });
 
   test('built-but-stopped workshops start', () => {
-    assert.strictEqual(reopenAction({ name: 'a', status: 'Off', rawStatus: 'stopped' }), 'start');
-    assert.strictEqual(reopenAction({ name: 'a', status: 'Off', rawStatus: 'STOPPED' }), 'start');
+    assert.strictEqual(reopenAction({ name: 'a', status: 'Off', rawStatus: 'stopped', projectId: 'p' }), 'start');
+    assert.strictEqual(reopenAction({ name: 'a', status: 'Off', rawStatus: 'STOPPED', projectId: 'p' }), 'start');
   });
 
   test('off and definition-only workshops launch', () => {
-    assert.strictEqual(reopenAction({ name: 'a', status: 'Off', rawStatus: 'off' }), 'launch');
+    assert.strictEqual(reopenAction({ name: 'a', status: 'Off', rawStatus: 'off', projectId: 'p' }), 'launch');
     // Definition-only: no rawStatus.
-    assert.strictEqual(reopenAction({ name: 'a', status: 'Off' }), 'launch');
+    assert.strictEqual(reopenAction({ name: 'a', status: 'Off', projectId: 'p' }), 'launch');
   });
 });
 

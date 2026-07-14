@@ -200,6 +200,15 @@ export class WorkshopClient {
   }
 
   /**
+   * Look up a single project by its daemon ID. Returns `undefined` when no
+   * project with that ID is currently registered.
+   */
+  async getProject(projectId: string): Promise<Project | undefined> {
+    const all = await this.projects();
+    return all.find((p) => p.id === projectId);
+  }
+
+  /**
    * Resolve a directory to a project, registering it with the daemon if it
    * isn't known yet. This is the entry point for any per-directory query.
    *
