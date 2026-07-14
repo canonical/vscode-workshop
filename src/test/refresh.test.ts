@@ -6,7 +6,7 @@ import * as fs from 'fs';
 import * as vscode from 'vscode';
 
 import { WorkshopClient } from '../api/client';
-import { refreshAndReopen } from '../remote/refresh';
+import { refreshAndReopen } from '../refresh';
 import { Workshop } from '../api/workshops';
 
 // ---------------------------------------------------------------------------

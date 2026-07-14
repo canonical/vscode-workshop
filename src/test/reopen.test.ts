@@ -8,7 +8,7 @@ import * as vscode from 'vscode';
 import { WebSocketServer, WebSocket } from 'ws';
 
 import { WorkshopClient } from '../api/client';
-import { reopenInWorkshop } from '../remote/reopen';
+import { reopenInWorkshop } from '../reopen';
 import { Workshop } from '../api/workshops';
 
 // ---------------------------------------------------------------------------

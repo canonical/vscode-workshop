@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 
-import { ERROR_KIND_NO_UPDATES_AVAILABLE, WorkshopApiError, WorkshopClient } from '../api/client';
-import { Workshop } from '../api/workshops';
+import { ERROR_KIND_NO_UPDATES_AVAILABLE, WorkshopApiError, WorkshopClient } from './api/client';
+import { Workshop } from './api/workshops';
 import { ReopenCallbacks, reopenInWorkshop, runAction } from './reopen';
 
 /** Progress-notification verb shown while each refresh mode runs. */
@@ -135,7 +135,7 @@ export function runResumeRefresh(
   projectPath: string,
   workshop: Workshop,
   callbacks: ReopenCallbacks,
-  mode: 'wait-on-error' | 'continue' | 'abort',
+  mode: 'continue' | 'abort',
   reopen: boolean,
   onConnected: (hostname: string) => void,
   onError: (err: unknown) => void,
