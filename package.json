@@ -84,13 +84,13 @@
         "command": "workshop.continueRefresh",
         "title": "Continue Refresh",
         "category": "Workshop",
-        "icon": "$(debug-continue)"
+        "icon": "$(redo)"
       },
       {
         "command": "workshop.abortRefresh",
         "title": "Abort Refresh",
         "category": "Workshop",
-        "icon": "$(stop-circle)"
+        "icon": "$(discard)"
       },
       {
         "command": "workshop.turnOff",
