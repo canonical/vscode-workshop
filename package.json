@@ -77,7 +77,8 @@
       {
         "command": "workshop.openDefinition",
         "title": "Open Definition File",
-        "category": "Workshop"
+        "category": "Workshop",
+        "icon": "$(go-to-file)"
       },
       {
         "command": "workshop.continueRefresh",
@@ -114,6 +115,11 @@
         }
       ],
       "view/item/context": [
+        {
+          "command": "workshop.openDefinition",
+          "when": "view == workshop.workshops && viewItem =~ /^workshop/",
+          "group": "inline"
+        },
         {
           "command": "workshop.refreshAndReopen",
           "when": "view == workshop.workshops && (viewItem == workshop-ready || viewItem == workshop-active)",

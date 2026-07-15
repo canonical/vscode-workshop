@@ -160,8 +160,11 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('workshop.abortRefresh', (item: WorkshopItem) =>
       handleRefresh(client, context, log, logsView, item, 'abort'),
     ),
-    vscode.commands.registerCommand('workshop.openDefinition', (definitionPath: string) => {
-      void vscode.window.showTextDocument(vscode.Uri.file(definitionPath), { preview: false });
+    vscode.commands.registerCommand('workshop.openDefinition', (arg: WorkshopItem | string) => {
+      const path = arg instanceof WorkshopItem ? arg.workshop.definitionPath : arg;
+      if (path) {
+        void vscode.window.showTextDocument(vscode.Uri.file(path), { preview: false });
+      }
     }),
     vscode.commands.registerCommand('workshop.turnOff', (item: WorkshopItem) =>
       handleTurnOff(client, context, log, item),
