@@ -152,13 +152,13 @@ export function activate(context: vscode.ExtensionContext) {
       handleReopenLocally(client, context),
     ),
     vscode.commands.registerCommand('workshop.refreshAndReopen', (item: WorkshopItem) =>
-      handleRefreshAndReopen(client, context, log, logsView, item),
+      handleRefresh(client, context, log, logsView, item),
     ),
     vscode.commands.registerCommand('workshop.continueRefresh', (item: WorkshopItem) =>
-      handleResumeRefresh(client, context, log, logsView, item, 'continue'),
+      handleRefresh(client, context, log, logsView, item, 'continue'),
     ),
     vscode.commands.registerCommand('workshop.abortRefresh', (item: WorkshopItem) =>
-      handleResumeRefresh(client, context, log, logsView, item, 'abort'),
+      handleRefresh(client, context, log, logsView, item, 'abort'),
     ),
     vscode.commands.registerCommand('workshop.openDefinition', (definitionPath: string) => {
       void vscode.window.showTextDocument(vscode.Uri.file(definitionPath), { preview: false });
@@ -179,16 +179,13 @@ export function deactivate() { }
  * isn't readable.
  */
 async function showWorkshopError(
-  log: vscode.LogOutputChannel,
   logsView: LogsView,
-  action: string,
   workshopName: string,
   definitionPath: string | undefined,
   err: unknown,
   logLines: string[],
 ): Promise<void> {
   const message = err instanceof Error ? err.message : String(err);
-  log.error(`Failed to ${action} ${workshopName}: ${message}`);
   const logContent = logLines.length > 0 ? `${logLines.join('\n')}\n\n${message}` : message;
   let anchored = false;
   if (definitionPath) {
@@ -227,10 +224,9 @@ function refreshCallbacks(
   return {
     onLog: (lines) => logLines.push(...lines),
     onPause: async (error) => {
+      log.error(`Failed to refresh ${workshop.name}: ${error}`);
       await showWorkshopError(
-        log,
         logsView,
-        'refresh',
         workshop.name,
         workshop.definitionPath,
         new Error(error),
@@ -320,24 +316,33 @@ async function handleReopenLocally(client: WorkshopClient, context: vscode.Exten
   );
 }
 
-function handleRefreshAndReopen(
+/**
+ * Refresh a workshop and reopen into it, or continue/abort a paused refresh.
+ *
+ * When invoked from inside a workshop, exits to the local window first and
+ * defers the operation there (the refresh runs against the local daemon).
+ * When invoked locally, runs the refresh immediately.
+ */
+function handleRefresh(
   client: WorkshopClient,
   context: vscode.ExtensionContext,
   log: vscode.LogOutputChannel,
   logsView: LogsView,
   item: WorkshopItem,
+  mode: 'wait-on-error' | 'continue' | 'abort' = 'wait-on-error',
 ): void {
-  // Invoked from inside a workshop: exit to the local window first, then resume
-  // the refresh-and-reopen there (the refresh runs against the local daemon).
   if (isWorkshop()) {
-    void deferRefreshToLocal(client, context, item.workshop.name, item.workshop.projectId);
+    void deferRefreshToLocal(client, context, item.workshop.name, item.workshop.projectId, mode);
     return;
   }
   const logLines: string[] = [];
+  const action = mode === 'wait-on-error' ? 'refresh and reopen' : `${mode} refresh`;
   refreshAndReopen(
     client,
     item.workshop,
     refreshCallbacks(log, logsView, item.workshop, logLines),
+    mode,
+    mode !== 'abort',
   )
     .then((hostname) => {
       if (hostname) {
@@ -345,7 +350,8 @@ function handleRefreshAndReopen(
       }
     })
     .catch((err: unknown) => {
-      void showWorkshopError(log, logsView, 'refresh and reopen', item.workshop.name, item.workshop.definitionPath, err, logLines);
+      log.error(`Failed to ${action} ${item.workshop.name}: ${err instanceof Error ? err.message : String(err)}`);
+      void showWorkshopError(logsView, item.workshop.name, item.workshop.definitionPath, err, logLines);
     });
 }
 
@@ -366,6 +372,7 @@ async function deferRefreshToLocal(
   context: vscode.ExtensionContext,
   name: string,
   projectId: string,
+  mode: 'wait-on-error' | 'continue' | 'abort' = 'wait-on-error',
 ): Promise<void> {
   const project = await client.getProject(projectId);
   if (!project) {
@@ -376,7 +383,7 @@ async function deferRefreshToLocal(
     kind: 'refresh',
     workshopName: name,
     projectId,
-    mode: 'wait-on-error',
+    mode,
   } satisfies PendingOperation);
   void vscode.commands.executeCommand(
     'vscode.openFolder',
@@ -443,65 +450,6 @@ function pathBasename(p: string): string {
 }
 
 /**
- * Continue or abort a workshop paused mid-refresh.
- *
- * When invoked from inside the workshop (a Remote-SSH window), the current
- * window must first exit to the local folder — the refresh runs against the
- * local daemon and reopens the connection afterwards. Because the extension
- * host restarts on reload, the intent is persisted and resumed on the next
- * local activation.
- *
- * When invoked locally it runs immediately. A local `continue` reopens into the
- * workshop; a local `abort` just unwinds and stays local (no reopen).
- */
-async function handleResumeRefresh(
-  client: WorkshopClient,
-  context: vscode.ExtensionContext,
-  log: vscode.LogOutputChannel,
-  logsView: LogsView,
-  item: WorkshopItem,
-  mode: 'continue' | 'abort',
-): Promise<void> {
-  if (isWorkshop()) {
-    // Exit to the local window first, then resume there.
-    const project = await client.getProject(item.workshop.projectId);
-    if (!project) {
-      void vscode.window.showErrorMessage('No local project path known for this workshop.');
-      return;
-    }
-    void writePendingOp(context.globalState, item.workshop.projectId, {
-      kind: 'refresh',
-      workshopName: item.workshop.name,
-      projectId: item.workshop.projectId,
-      mode,
-    } satisfies PendingOperation);
-    void vscode.commands.executeCommand(
-      'vscode.openFolder',
-      vscode.Uri.file(project.path),
-      { forceReuseWindow: true },
-    );
-    return;
-  }
-
-  const logLines: string[] = [];
-  refreshAndReopen(
-    client,
-    item.workshop,
-    refreshCallbacks(log, logsView, item.workshop, logLines),
-    mode,
-    mode !== 'abort',
-  )
-    .then((hostname) => {
-      if (hostname) {
-        void writeSession(context.globalState, hostname, { projectId: item.workshop.projectId, workshopName: item.workshop.name });
-      }
-    })
-    .catch((err: unknown) => {
-      void showWorkshopError(log, logsView, `${mode} refresh`, item.workshop.name, item.workshop.definitionPath, err, logLines);
-    });
-}
-
-/**
  * Resume a {@link PendingOperation} deferred from inside a workshop.
  */
 async function resumePendingOperation(
@@ -530,7 +478,8 @@ async function resumePendingOperation(
       })
       .catch((err: unknown) => {
         const action = op.mode === 'wait-on-error' ? 'refresh and reopen' : `${op.mode} refresh`;
-        void showWorkshopError(log, logsView, action, workshop.name, workshop.definitionPath, err, logLines);
+        log.error(`Failed to ${action} ${workshop.name}: ${err instanceof Error ? err.message : String(err)}`);
+        void showWorkshopError(logsView, workshop.name, workshop.definitionPath, err, logLines);
       });
   }
 }
@@ -549,7 +498,8 @@ function handleReopenInWorkshop(
       void writeSession(context.globalState, hostname, { projectId: item.workshop.projectId, workshopName: item.workshop.name });
     })
     .catch((err: unknown) => {
-      void showWorkshopError(log, logsView, 'reopen in workshop', item.workshop.name, item.workshop.definitionPath, err, logLines);
+      log.error(`Failed to reopen in workshop ${item.workshop.name}: ${err instanceof Error ? err.message : String(err)}`);
+      void showWorkshopError(logsView, item.workshop.name, item.workshop.definitionPath, err, logLines);
     });
 }
 
