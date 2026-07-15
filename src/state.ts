@@ -1,0 +1,129 @@
+import * as vscode from 'vscode';
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-hostname record stored under `'workshop.sessions'` in `globalState`.
+ *
+ * Written just before a workshop window is opened via Remote-SSH; cleared when
+ * "Reopen Locally" returns the user to the local project.  Keyed by SSH
+ * hostname (e.g. `'web.proj-1.wp'`) so concurrent workshop windows for
+ * different projects never overwrite each other.
+ */
+export interface WorkshopSession {
+  /** The daemon project ID for this workshop's project directory. */
+  projectId: string;
+  /** Workshop name (e.g. `'web'`). */
+  workshopName: string;
+}
+
+/**
+ * An operation deferred to the local window because it must run against the
+ * local daemon.  Stored under `'workshop.pendingOps'` keyed by
+ * `localProjectPath` so it can only be consumed by the window that owns that
+ * project — stale ops from other projects are structurally invisible.
+ */
+export type PendingOperation =
+  | { kind: 'refresh'; workshopName: string; projectId: string; mode: 'wait-on-error' | 'continue' | 'abort' }
+  | { kind: 'turn-off'; workshopName: string; projectId: string };
+
+// ---------------------------------------------------------------------------
+// globalState key constants
+// ---------------------------------------------------------------------------
+
+export const SESSIONS_KEY = 'workshop.sessions';
+export const PENDING_OPS_KEY = 'workshop.pendingOps';
+
+// ---------------------------------------------------------------------------
+// Hostname helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract the SSH hostname from a workspace folder URI.
+ *
+ * Inside a Remote-SSH workshop window, `folder.uri` has scheme `vscode-remote`
+ * and authority `ssh-remote+<hostname>`.  Returns `undefined` in a local window
+ * (scheme `file`) or when the authority format is unrecognised.
+ */
+export function hostnameFromFolder(
+  folder: vscode.WorkspaceFolder | undefined,
+): string | undefined {
+  if (!folder || folder.uri.scheme !== 'vscode-remote') {
+    return undefined;
+  }
+  const authority = folder.uri.authority; // "ssh-remote+<hostname>"
+  const prefix = 'ssh-remote+';
+  return authority.startsWith(prefix) ? authority.slice(prefix.length) : undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Session helpers
+// ---------------------------------------------------------------------------
+
+/** Read the session record for the given SSH hostname, or `undefined` if absent. */
+export function readSession(
+  globalState: vscode.Memento,
+  hostname: string,
+): WorkshopSession | undefined {
+  const all = globalState.get<Record<string, WorkshopSession>>(SESSIONS_KEY) ?? {};
+  return all[hostname];
+}
+
+/** Persist a session record for the given SSH hostname. */
+export function writeSession(
+  globalState: vscode.Memento,
+  hostname: string,
+  session: WorkshopSession,
+): Thenable<void> {
+  const all = globalState.get<Record<string, WorkshopSession>>(SESSIONS_KEY) ?? {};
+  return globalState.update(SESSIONS_KEY, { ...all, [hostname]: session });
+}
+
+/** Remove the session record for the given SSH hostname. */
+export function clearSession(
+  globalState: vscode.Memento,
+  hostname: string,
+): Thenable<void> {
+  const all = globalState.get<Record<string, WorkshopSession>>(SESSIONS_KEY) ?? {};
+  const { [hostname]: _removed, ...rest } = all;
+  return globalState.update(SESSIONS_KEY, Object.keys(rest).length > 0 ? rest : undefined);
+}
+
+// ---------------------------------------------------------------------------
+// Pending-operation helpers
+// ---------------------------------------------------------------------------
+
+/** Read the pending operation for the given project ID, or `undefined`. */
+export function readPendingOp(
+  globalState: vscode.Memento,
+  projectId: string,
+): PendingOperation | undefined {
+  const all = globalState.get<Record<string, PendingOperation>>(PENDING_OPS_KEY) ?? {};
+  return all[projectId];
+}
+
+/** Persist a pending operation for the given project ID. */
+export function writePendingOp(
+  globalState: vscode.Memento,
+  projectId: string,
+  op: PendingOperation,
+): Thenable<void> {
+  const all = globalState.get<Record<string, PendingOperation>>(PENDING_OPS_KEY) ?? {};
+  return globalState.update(PENDING_OPS_KEY, { ...all, [projectId]: op });
+}
+
+/** Remove the pending operation for the given project ID. */
+export function clearPendingOp(
+  globalState: vscode.Memento,
+  projectId: string,
+): Thenable<void> {
+  const all = globalState.get<Record<string, PendingOperation>>(PENDING_OPS_KEY) ?? {};
+  const { [projectId]: _removed, ...rest } = all;
+  return globalState.update(PENDING_OPS_KEY, Object.keys(rest).length > 0 ? rest : undefined);
+}
+
+// ---------------------------------------------------------------------------
+// Path resolution
+// ---------------------------------------------------------------------------

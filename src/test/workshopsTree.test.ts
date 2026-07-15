@@ -35,8 +35,8 @@ async function captureUnavailable(body: () => Promise<void>): Promise<boolean[]>
 suite('WorkshopsTreeProvider', () => {
   test('renders workshops from the poller cache', async () => {
     const workshops: Workshop[] = [
-      { name: 'web', status: 'On' },
-      { name: 'db', status: 'Off' },
+      { name: 'web', status: 'On', projectId: 'proj-1' },
+      { name: 'db', status: 'Off', projectId: 'proj-1' },
     ];
     const poller = new WorkshopPoller<Workshop[]>(() => Promise.resolve(workshops), 50_000);
     const provider = new WorkshopsTreeProvider(poller);
@@ -77,7 +77,7 @@ suite('WorkshopsTreeProvider', () => {
       () =>
         shouldFail
           ? Promise.reject(err)
-          : Promise.resolve([{ name: 'web', status: 'On' }]),
+          : Promise.resolve([{ name: 'web', status: 'On', projectId: 'proj-1' }]),
       50_000,
     );
     const provider = new WorkshopsTreeProvider(poller);

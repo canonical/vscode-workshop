@@ -69,11 +69,12 @@ suite('WorkshopClient over a fake workshopd socket', () => {
 
   test('listProjectWorkshops resolves the project and merges results', async () => {
     const client = new WorkshopClient({ socketPath });
-    const workshops = await listProjectWorkshops(client, '/repo');
+    const project = await client.ensureProject('/repo');
+    const workshops = await listProjectWorkshops(client, project.id);
 
     assert.deepStrictEqual(workshops, [
-      { name: 'db', status: 'Off', definitionPath: '/repo/.workshop/db.yaml' },
-      { name: 'web', status: 'On', rawStatus: 'ready', hostname: undefined, definitionPath: '/repo/.workshop/web.yaml' },
+      { name: 'db', status: 'Off', definitionPath: '/repo/.workshop/db.yaml', projectId: 'proj-1' },
+      { name: 'web', status: 'On', rawStatus: 'ready', hostname: undefined, definitionPath: '/repo/.workshop/web.yaml', projectId: 'proj-1' },
     ]);
   });
 
