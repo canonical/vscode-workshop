@@ -160,8 +160,17 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('workshop.abortRefresh', (item: WorkshopItem) =>
       handleRefresh(client, context, log, logsView, item, 'abort'),
     ),
-    vscode.commands.registerCommand('workshop.openDefinition', (definitionPath: string) => {
-      void vscode.window.showTextDocument(vscode.Uri.file(definitionPath), { preview: false });
+    vscode.commands.registerCommand('workshop.openDefinition', (arg: WorkshopItem | string) => {
+      if (arg instanceof WorkshopItem) {
+        const path = arg.workshop.definitionPath;
+        if (path) {
+          void vscode.window.showTextDocument(vscode.Uri.file(path), { preview: false });
+        } else {
+          void vscode.window.showWarningMessage(`No definition file path is available for "${arg.workshop.name}".`);
+        }
+      } else {
+        void vscode.window.showTextDocument(vscode.Uri.file(arg), { preview: false });
+      }
     }),
     vscode.commands.registerCommand('workshop.turnOff', (item: WorkshopItem) =>
       handleTurnOff(client, context, log, item),
