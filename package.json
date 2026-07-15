@@ -109,8 +109,8 @@
     "menus": {
       "view/title": [
         {
-          "command": "workshop.poll",
-          "when": "view == workshop.workshops",
+          "command": "workshop.reopenLocally",
+          "when": "view == workshop.workshops && remoteName == 'ssh-remote'",
           "group": "navigation"
         }
       ],
@@ -133,11 +133,6 @@
         {
           "command": "workshop.abortRefresh",
           "when": "view == workshop.workshops && (viewItem == workshop-active-waiting || (viewItem == workshop-waiting && remoteName != 'ssh-remote'))",
-          "group": "inline"
-        },
-        {
-          "command": "workshop.reopenLocally",
-          "when": "view == workshop.workshops && (viewItem == workshop-active || viewItem == workshop-active-waiting)",
           "group": "inline"
         },
         {
