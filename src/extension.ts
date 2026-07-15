@@ -270,17 +270,11 @@ function handlePendingOp(
     .then(async (project) => {
       const pendingOp = readPendingOp(context.globalState, project.id);
       if (pendingOp) {
-        void clearPendingOp(context.globalState, project.id);
+        await clearPendingOp(context.globalState, project.id);
         void resumePendingOperation(client, context, log, logsView, pendingOp);
         return;
       }
-      const workshops = await listProjectWorkshops(client, project.id);
-      void createOpenPrompt({
-        workshops,
-        projectPath: localPath,
-        reopen: async (workshop) =>
-          handleReopenInWorkshop(client, context, log, logsView, new WorkshopItem(workshop)),
-      });
+      await maybeShowOpenPrompt(client, context, log, logsView, project.id, localPath);
     })
     .catch((err: unknown) => {
       log.debug(
@@ -289,6 +283,34 @@ function handlePendingOp(
         }`,
       );
     });
+}
+
+/**
+ * Show the one-shot open prompt for a project, unless it has already been
+ * shown before. Marks the project as prompted after the first showing.
+ */
+async function maybeShowOpenPrompt(
+  client: WorkshopClient,
+  context: vscode.ExtensionContext,
+  log: vscode.LogOutputChannel,
+  logsView: LogsView,
+  projectId: string,
+  localPath: string,
+): Promise<void> {
+  const promptedKey = `workshop.prompted.${projectId}`;
+  if (context.globalState.get<boolean>(promptedKey)) {
+    return;
+  }
+  const workshops = await listProjectWorkshops(client, projectId);
+  const shown = await createOpenPrompt({
+    workshops,
+    projectPath: localPath,
+    reopen: async (workshop) =>
+      handleReopenInWorkshop(client, context, log, logsView, new WorkshopItem(workshop)),
+  });
+  if (shown) {
+    await context.globalState.update(promptedKey, true);
+  }
 }
 
 async function handleReopenLocally(client: WorkshopClient, context: vscode.ExtensionContext): Promise<void> {
@@ -379,7 +401,7 @@ async function deferRefreshToLocal(
     void vscode.window.showErrorMessage('No local project path known for this workshop.');
     return;
   }
-  void writePendingOp(context.globalState, projectId, {
+  await writePendingOp(context.globalState, projectId, {
     kind: 'refresh',
     workshopName: name,
     projectId,
@@ -460,7 +482,12 @@ async function resumePendingOperation(
   op: PendingOperation,
 ): Promise<void> {
   if (op.kind === 'turn-off') {
-    runTurnOff(client, context, log, { name: op.workshopName, status: 'Waiting', projectId: op.projectId });
+    runTurnOff(client, { name: op.workshopName, status: 'Waiting', projectId: op.projectId })
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        log.error(`Failed to turn off ${op.workshopName}: ${message}`);
+        void vscode.window.showErrorMessage(`Failed to turn off "${op.workshopName}": ${message}`);
+      });
   } else if (op.kind === 'refresh') {
     const workshop: Workshop = { name: op.workshopName, status: 'Waiting', projectId: op.projectId };
     const logLines: string[] = [];
@@ -518,13 +545,8 @@ async function handleTurnOff(
   item: WorkshopItem,
 ): Promise<void> {
   const name = item.workshop.name;
-  const hostname = hostnameFromFolder(vscode.workspace.workspaceFolders?.[0]);
-  const connectedToTarget =
-    isWorkshop() &&
-    hostname !== undefined &&
-    readSession(context.globalState, hostname)?.workshopName === name;
 
-  if (connectedToTarget) {
+  if (isWorkshop()) {
     // Exit to the local window first, then remove there.
     const project = await client.getProject(item.workshop.projectId);
     if (!project) {
@@ -533,7 +555,7 @@ async function handleTurnOff(
       );
       return;
     }
-    void writePendingOp(context.globalState, item.workshop.projectId, {
+    await writePendingOp(context.globalState, item.workshop.projectId, {
       kind: 'turn-off',
       workshopName: name,
       projectId: item.workshop.projectId,
@@ -545,32 +567,28 @@ async function handleTurnOff(
     );
     return;
   }
-  void runTurnOff(client, context, log, item.workshop);
+  await runTurnOff(client, item.workshop)
+    .catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      log.error(`Failed to turn off ${item.workshop.name}: ${message}`);
+      void vscode.window.showErrorMessage(`Failed to turn off "${item.workshop.name}": ${message}`);
+    });
 }
 
 /** Run the `remove` action for a workshop, with a progress notification. */
-function runTurnOff(
+async function runTurnOff(
   client: WorkshopClient,
-  context: vscode.ExtensionContext,
-  log: vscode.LogOutputChannel,
   workshop: Workshop,
-): void {
-  void vscode.window
-    .withProgress(
-      {
-        location: vscode.ProgressLocation.Notification,
-        title: workshop.name,
-        cancellable: false,
-      },
-      async (progress) => {
-        progress.report({ message: 'turning off…' });
-        const projectId = workshop.projectId;;
-        await runAction(client, projectId, workshop.name, 'remove', progress, {}, false);
-      },
-    )
-    .then(undefined, (err: unknown) => {
-      const message = err instanceof Error ? err.message : String(err);
-      log.error(`Failed to turn off ${workshop.name}: ${message}`);
-      void vscode.window.showErrorMessage(`Failed to turn off "${workshop.name}": ${message}`);
-    });
+): Promise<void> {
+  await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: workshop.name,
+      cancellable: false,
+    },
+    async (progress) => {
+      progress.report({ message: 'turning off…' });
+      await runAction(client, workshop.projectId, workshop.name, 'remove', progress, {}, false);
+    },
+  );
 }
