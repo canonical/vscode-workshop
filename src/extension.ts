@@ -66,6 +66,14 @@ export function activate(context: vscode.ExtensionContext) {
   const treeView = vscode.window.createTreeView('workshop.workshops', {
     treeDataProvider: provider,
   });
+
+  function updateTreeViewTitle(): void {
+    treeView.title = vscode.workspace.name ?? undefined;
+  }
+  updateTreeViewTitle();
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeWorkspaceFolders(updateTreeViewTitle),
+  );
   // Gate polling on view visibility so the daemon can go socket-activated
   // when the Workshop panel is closed.
   let activationHandle: vscode.Disposable | undefined;
