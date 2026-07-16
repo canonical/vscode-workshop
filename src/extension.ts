@@ -227,12 +227,35 @@ async function showWorkshopError(
   }
 }
 
+async function resolveWorkshopDefinitionPath(
+  client: WorkshopClient,
+  workshop: Workshop,
+): Promise<string | undefined> {
+  if (workshop.definitionPath) {
+    return workshop.definitionPath;
+  }
+  const workshops = await listProjectWorkshops(client, workshop.projectId);
+  return workshops.find((candidate) => candidate.name === workshop.name)?.definitionPath;
+}
+
+async function showResolvedWorkshopError(
+  client: WorkshopClient,
+  logsView: LogsView,
+  workshop: Workshop,
+  err: unknown,
+  logLines: string[],
+): Promise<void> {
+  const definitionPath = await resolveWorkshopDefinitionPath(client, workshop).catch(() => undefined);
+  await showWorkshopError(logsView, workshop.name, definitionPath, err, logLines);
+}
+
 /**
  * Build the callbacks for a refresh: collect verbose log lines, and on a
  * paused (`Wait`) refresh show those logs — same presentation as a failed
  * launch — then ask whether to reopen for debugging or abort the refresh.
  */
 function refreshCallbacks(
+  client: WorkshopClient,
   log: vscode.LogOutputChannel,
   logsView: LogsView,
   workshop: Workshop,
@@ -242,13 +265,7 @@ function refreshCallbacks(
     onLog: (lines) => logLines.push(...lines),
     onPause: async (error) => {
       log.error(`Failed to refresh ${workshop.name}: ${error}`);
-      await showWorkshopError(
-        logsView,
-        workshop.name,
-        workshop.definitionPath,
-        new Error(error),
-        logLines,
-      );
+      await showResolvedWorkshopError(client, logsView, workshop, new Error(error), logLines);
       const choice = await vscode.window.showInformationMessage(
         `"${workshop.name}" refresh is paused due to a failure. Reopen for debugging, or abort the refresh?`,
         'Reopen and Debug',
@@ -379,7 +396,7 @@ function handleRefresh(
   refreshAndReopen(
     client,
     item.workshop,
-    refreshCallbacks(log, logsView, item.workshop, logLines),
+    refreshCallbacks(client, log, logsView, item.workshop, logLines),
     mode,
     mode !== 'abort',
   )
@@ -390,7 +407,7 @@ function handleRefresh(
     })
     .catch((err: unknown) => {
       log.error(`Failed to ${action} ${item.workshop.name}: ${err instanceof Error ? err.message : String(err)}`);
-      void showWorkshopError(logsView, item.workshop.name, item.workshop.definitionPath, err, logLines);
+      void showResolvedWorkshopError(client, logsView, item.workshop, err, logLines);
     });
 }
 
@@ -511,7 +528,7 @@ async function resumePendingOperation(
     refreshAndReopen(
       client,
       workshop,
-      refreshCallbacks(log, logsView, workshop, logLines),
+      refreshCallbacks(client, log, logsView, workshop, logLines),
       op.mode,
       true,
     )
@@ -523,7 +540,7 @@ async function resumePendingOperation(
       .catch((err: unknown) => {
         const action = op.mode === 'wait-on-error' ? 'refresh and reopen' : `${op.mode} refresh`;
         log.error(`Failed to ${action} ${workshop.name}: ${err instanceof Error ? err.message : String(err)}`);
-        void showWorkshopError(logsView, workshop.name, workshop.definitionPath, err, logLines);
+        void showResolvedWorkshopError(client, logsView, workshop, err, logLines);
       });
   }
 }
@@ -543,7 +560,7 @@ function handleReopenInWorkshop(
     })
     .catch((err: unknown) => {
       log.error(`Failed to reopen in workshop ${item.workshop.name}: ${err instanceof Error ? err.message : String(err)}`);
-      void showWorkshopError(logsView, item.workshop.name, item.workshop.definitionPath, err, logLines);
+      void showResolvedWorkshopError(client, logsView, item.workshop, err, logLines);
     });
 }
 
