@@ -72,13 +72,6 @@ export class WorkshopItem extends vscode.TreeItem {
     this.tooltip = workshop.name;
     this.description = workshop.status;
     this.iconPath = workshopIcon(workshop.status, active);
-    if (!active && workshop.status !== 'Pending') {
-      this.command = {
-        command: 'workshop.reopenInWorkshop',
-        title: 'Reopen in Workshop',
-        arguments: [this],
-      };
-    }
     if (workshop.status === 'Waiting') {
       // A paused-mid-refresh workshop offers continue/abort actions. The active
       // (connected) one is distinguished so its hover buttons can show even

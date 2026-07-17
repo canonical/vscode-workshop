@@ -116,6 +116,11 @@
       ],
       "view/item/context": [
         {
+          "command": "workshop.reopenInWorkshop",
+          "when": "view == workshop.workshops && (viewItem == workshop || viewItem == workshop-ready || (viewItem == workshop-waiting && remoteName != 'ssh-remote'))",
+          "group": "inline"
+        },
+        {
           "command": "workshop.openDefinition",
           "when": "view == workshop.workshops && viewItem =~ /^workshop/",
           "group": "inline"
