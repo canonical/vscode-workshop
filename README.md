@@ -1,61 +1,38 @@
 # Workshop — VS Code Extension
 
-Open any [Workshop](https://snapcraft.io/workshop) project in a container with one click.
+Open a [Workshop](https://snapcraft.io/workshop) project in a container from VS Code.
 
 ## Requirements
 
-- [Workshop](https://snapcraft.io/workshop) installed (`snap install workshop --classic`)
-- [Remote - SSH](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-ssh) extension (installed automatically as a dependency)
+- [Workshop](https://snapcraft.io/workshop): `snap install workshop --classic`
+- [Remote - SSH](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-ssh), installed automatically as a dependency
 
 ## Install locally
 
-The extension isn't on the Marketplace yet. To install it from source, build a
-`.vsix` package and install it into VS Code.
+The extension is not on the Marketplace yet. Build and install a local `.vsix`:
 
-1. Build the package (runs `@vscode/vsce package` inside the workshop):
+```bash
+workshop launch
+workshop run -- build
+code --install-extension workshop-*.vsix
+```
 
-   ```bash
-   workshop run build
-   ```
-
-   This produces a `workshop-<version>.vsix` file in the project root.
-
-2. Install it into VS Code, either:
-   - From the command line:
-
-     ```bash
-     code --install-extension workshop-*.vsix
-     ```
-
-   - Or from the UI: open the Extensions view, click the `...` menu, choose
-     **Install from VSIX…**, and select the generated file.
-
-3. Reload VS Code when prompted.
-
-To update, rebuild the `.vsix` and install it again. To remove the extension,
-uninstall **Workshop** from the Extensions view.
+Reload VS Code when prompted. To update, rebuild and reinstall the `.vsix`.
 
 ## Development
 
-This project uses Workshop for its own development environment.
+This project uses Workshop for its development environment:
 
 ```bash
 workshop launch
 workshop connect ext/test-deps:desktop
 ```
 
-Then open this project in VS Code and press `F5` to launch the extension in a new Extension Development Host window.
+Open the project in VS Code and press `F5` to start an Extension Development Host.
 
-### Running tests
-
-```bash
-workshop run test
-```
-
-Tests run headlessly inside the workshop container.
-
-### Building
+Useful commands:
 
 ```bash
-workshop run build
+workshop run -- test
+workshop run -- build
 ```
