@@ -27,6 +27,21 @@ const isLocal = () => vscode.env.remoteName !== 'ssh-remote';
 /** True when the window is connected to a workshop via Remote-SSH. */
 const isWorkshop = () => vscode.env.remoteName === 'ssh-remote';
 
+/** Add the session write that must complete before the remote window opens. */
+function withSession(
+  context: vscode.ExtensionContext,
+  workshop: Workshop,
+  callbacks: ReopenCallbacks,
+): ReopenCallbacks {
+  return {
+    ...callbacks,
+    onBeforeOpen: (hostname) => writeSession(context.globalState, hostname, {
+      projectId: workshop.projectId,
+      workshopName: workshop.name,
+    }),
+  };
+}
+
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
@@ -396,19 +411,17 @@ function handleRefresh(
   refreshAndReopen(
     client,
     item.workshop,
-    refreshCallbacks(client, log, logsView, item.workshop, logLines),
+    withSession(
+      context,
+      item.workshop,
+      refreshCallbacks(client, log, logsView, item.workshop, logLines),
+    ),
     mode,
     mode !== 'abort',
-  )
-    .then((hostname) => {
-      if (hostname) {
-        void writeSession(context.globalState, hostname, { projectId: item.workshop.projectId, workshopName: item.workshop.name });
-      }
-    })
-    .catch((err: unknown) => {
-      log.error(`Failed to ${action} ${item.workshop.name}: ${err instanceof Error ? err.message : String(err)}`);
-      void showResolvedWorkshopError(client, logsView, item.workshop, err, logLines);
-    });
+  ).catch((err: unknown) => {
+    log.error(`Failed to ${action} ${item.workshop.name}: ${err instanceof Error ? err.message : String(err)}`);
+    void showResolvedWorkshopError(client, logsView, item.workshop, err, logLines);
+  });
 }
 
 /**
@@ -528,20 +541,18 @@ async function resumePendingOperation(
     refreshAndReopen(
       client,
       workshop,
-      refreshCallbacks(client, log, logsView, workshop, logLines),
+      withSession(
+        context,
+        workshop,
+        refreshCallbacks(client, log, logsView, workshop, logLines),
+      ),
       op.mode,
       true,
-    )
-      .then((hostname) => {
-        if (hostname) {
-          void writeSession(context.globalState, hostname, { projectId: op.projectId, workshopName: workshop.name });
-        }
-      })
-      .catch((err: unknown) => {
-        const action = op.mode === 'wait-on-error' ? 'refresh and reopen' : `${op.mode} refresh`;
-        log.error(`Failed to ${action} ${workshop.name}: ${err instanceof Error ? err.message : String(err)}`);
-        void showResolvedWorkshopError(client, logsView, workshop, err, logLines);
-      });
+    ).catch((err: unknown) => {
+      const action = op.mode === 'wait-on-error' ? 'refresh and reopen' : `${op.mode} refresh`;
+      log.error(`Failed to ${action} ${workshop.name}: ${err instanceof Error ? err.message : String(err)}`);
+      void showResolvedWorkshopError(client, logsView, workshop, err, logLines);
+    });
   }
 }
 
@@ -554,14 +565,14 @@ function handleReopenInWorkshop(
 ): void {
   const logLines: string[] = [];
   const callbacks: ReopenCallbacks = { onLog: (lines) => logLines.push(...lines) };
-  reopenInWorkshop(client, item.workshop, callbacks)
-    .then((hostname: string) => {
-      void writeSession(context.globalState, hostname, { projectId: item.workshop.projectId, workshopName: item.workshop.name });
-    })
-    .catch((err: unknown) => {
-      log.error(`Failed to reopen in workshop ${item.workshop.name}: ${err instanceof Error ? err.message : String(err)}`);
-      void showResolvedWorkshopError(client, logsView, item.workshop, err, logLines);
-    });
+  reopenInWorkshop(
+    client,
+    item.workshop,
+    withSession(context, item.workshop, callbacks),
+  ).catch((err: unknown) => {
+    log.error(`Failed to reopen in workshop ${item.workshop.name}: ${err instanceof Error ? err.message : String(err)}`);
+    void showResolvedWorkshopError(client, logsView, item.workshop, err, logLines);
+  });
 }
 
 /**

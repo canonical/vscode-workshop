@@ -16,6 +16,12 @@ export interface ReopenCallbacks {
    */
   onLog?: (lines: string[]) => void;
   /**
+   * Called after the hostname is resolved and immediately before opening the
+   * remote window. The callback is awaited so callers can persist state before
+   * `vscode.openFolder` can replace the extension host.
+   */
+  onBeforeOpen?: (hostname: string) => Thenable<void> | void;
+  /**
    * Called when a `wait-on-error` refresh pauses (Wait state) because a task
    * failed. Receives the failure message from the change. Lets the caller
    * surface the logs and choose how to proceed:
@@ -92,6 +98,7 @@ export async function reopenInWorkshop(
       // Step 4: reopen in the same window via Remote-SSH.
       progress.report({ message: 'Opening…' });
       const uri = vscode.Uri.parse(`vscode-remote://ssh-remote+${connectedHostname}/project`);
+      await callbacks.onBeforeOpen?.(connectedHostname);
       await vscode.commands.executeCommand('vscode.openFolder', uri, {
         forceReuseWindow: true,
       });
