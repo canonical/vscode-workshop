@@ -20,12 +20,45 @@ export interface Project {
   path: string;
 }
 
+export interface HealthCheckInfo {
+  timestamp: string;
+  message?: string;
+  code?: string;
+}
+
+export interface StoreAccount {
+  id?: string;
+  username?: string;
+  'display-name'?: string;
+  validation?: string;
+}
+
+export interface SdkInfo {
+  name: string;
+  version?: string;
+  channel?: string;
+  website?: string;
+  publisher?: StoreAccount;
+  source?: string;
+  revision?: string;
+  'built-at'?: string;
+  'installed-at'?: string;
+  'health-check'?: HealthCheckInfo;
+}
+
+export interface SdkFullInfo {
+  name: string;
+  website?: string;
+  publisher?: StoreAccount;
+}
+
 /** A launched workshop with a live status (`GET .../workshops` → `workshops`). */
 export interface WorkshopInfo {
   'project-id': string;
   name: string;
   base?: string;
   status: string;
+  sdks?: SdkInfo[];
   notes?: string[];
   /**
    * The workshop's routable hostname on the `.wp` domain. Sent with
@@ -266,6 +299,12 @@ export class WorkshopClient {
     // The endpoint wraps WorkshopInfo in a Workshop struct with an extra `path`
     // field; WorkshopInfo is embedded so all its fields are top-level.
     return result as WorkshopInfo;
+  }
+
+  /** Fetch store/metadata details for a single SDK. */
+  async getSdkInfo(name: string): Promise<SdkFullInfo> {
+    const result = await this.request('GET', `/v1/sdks/${encodeURIComponent(name)}`);
+    return result as SdkFullInfo;
   }
 
   /**
