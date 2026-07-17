@@ -6,16 +6,19 @@ import { refreshAndReopen, reopenInWorkshop, ReopenCallbacks, runAction } from '
 import {
   clearPendingOp,
   clearSession,
-  hostnameFromFolder,
   PendingOperation,
   readPendingOp,
-  readSession,
   writePendingOp,
   writeSession,
 } from './state';
 import { LogsView } from './ui/logsView';
 import { createOpenPrompt } from './ui/openPrompt';
 import { WorkshopItem } from './ui/workshopsTree';
+import {
+  currentWorkshop,
+  isWorkshopWindow,
+  resolveCurrentProjectId,
+} from './workspaceContext';
 
 export interface WorkshopCommands {
   resumePendingOperation(): void;
@@ -43,8 +46,6 @@ export function createWorkshopCommands({
   log,
   logsView,
 }: WorkshopCommandDependencies): WorkshopCommands {
-  const isWorkshop = () => vscode.env.remoteName === 'ssh-remote';
-
   function withSession(workshop: Workshop, callbacks: ReopenCallbacks): ReopenCallbacks {
     return {
       ...callbacks,
@@ -164,13 +165,12 @@ export function createWorkshopCommands({
   }
 
   async function reopenLocally(): Promise<void> {
-    const folder = vscode.workspace.workspaceFolders?.[0];
-    const hostname = hostnameFromFolder(folder);
-    if (!hostname) {
+    const current = currentWorkshop(globalState);
+    if (!current) {
       void vscode.window.showErrorMessage('Cannot reopen locally: not connected to a workshop.');
       return;
     }
-    const session = readSession(globalState, hostname);
+    const { hostname, session } = current;
     if (!session) {
       void vscode.commands.executeCommand('workbench.action.remote.close');
       return;
@@ -189,7 +189,7 @@ export function createWorkshopCommands({
   }
 
   function refresh(item: WorkshopItem, mode: RefreshMode = 'wait-on-error'): void {
-    if (isWorkshop()) {
+    if (isWorkshopWindow()) {
       void deferRefreshToLocal(item.workshop.name, item.workshop.projectId, mode);
       return;
     }
@@ -253,15 +253,7 @@ export function createWorkshopCommands({
     if (fromCache) {
       return fromCache;
     }
-    const folder = vscode.workspace.workspaceFolders?.[0];
-    let projectId: string | undefined;
-    if (isWorkshop()) {
-      const hostname = hostnameFromFolder(folder);
-      projectId = hostname ? readSession(globalState, hostname)?.projectId : undefined;
-    } else if (folder) {
-      const project = await client.ensureProject(folder.uri.fsPath);
-      projectId = project.id;
-    }
+    const projectId = await resolveCurrentProjectId(client, globalState);
     if (!projectId) {
       return undefined;
     }
@@ -352,7 +344,7 @@ export function createWorkshopCommands({
   async function turnOff(item: WorkshopItem): Promise<void> {
     const workshop = item.workshop;
 
-    if (isWorkshop()) {
+    if (isWorkshopWindow()) {
       const project = await client.getProject(workshop.projectId);
       if (!project) {
         void vscode.window.showErrorMessage(

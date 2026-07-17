@@ -3,7 +3,6 @@ import * as vscode from 'vscode';
 import { WorkshopClient } from './api/client';
 import { listProjectWorkshops, Workshop } from './api/workshops';
 import { WorkshopPoller } from './poller';
-import { hostnameFromFolder, readSession } from './state';
 import { createDefinitionWatcher } from './ui/definitionWatcher';
 import { LogsView } from './ui/logsView';
 import {
@@ -12,8 +11,11 @@ import {
   WorkshopItem,
 } from './ui/workshopsTree';
 import { createWorkshopCommands } from './workshopCommands';
-
-const isWorkshop = () => vscode.env.remoteName === 'ssh-remote';
+import {
+  currentWorkshop,
+  isWorkshopWindow,
+  resolveCurrentProjectId,
+} from './workspaceContext';
 
 export function activate(context: vscode.ExtensionContext): void {
   const log = vscode.window.createOutputChannel('Workshop', { log: true });
@@ -25,21 +27,9 @@ export function activate(context: vscode.ExtensionContext): void {
   const logsView = new LogsView();
   logsView.register(context);
 
-  const poller = new WorkshopPoller<Workshop[]>(() => {
-    const folder = vscode.workspace.workspaceFolders?.[0];
-    if (!folder) {
-      return Promise.resolve([]);
-    }
-    if (isWorkshop()) {
-      const hostname = hostnameFromFolder(folder);
-      const projectId = hostname ? readSession(context.globalState, hostname)?.projectId : undefined;
-      if (!projectId) {
-        return Promise.resolve([]);
-      }
-      return listProjectWorkshops(client, projectId);
-    }
-    return client.ensureProject(folder.uri.fsPath)
-      .then((project) => listProjectWorkshops(client, project.id));
+  const poller = new WorkshopPoller<Workshop[]>(async () => {
+    const projectId = await resolveCurrentProjectId(client, context.globalState);
+    return projectId ? listProjectWorkshops(client, projectId) : [];
   });
 
   const provider = new WorkshopsTreeProvider(poller, client, log);
@@ -61,22 +51,16 @@ export function activate(context: vscode.ExtensionContext): void {
   let activationHandle: vscode.Disposable | undefined;
   function onViewVisible(): void {
     activationHandle ??= poller.activate();
-    if (isWorkshop()) {
-      const folder = vscode.workspace.workspaceFolders?.[0];
-      const hostname = hostnameFromFolder(folder);
-      const workshopName = hostname
-        ? readSession(context.globalState, hostname)?.workshopName
-        : undefined;
-      if (workshopName) {
-        provider.setActiveWorkshop(workshopName);
-      }
+    const workshopName = currentWorkshop(context.globalState)?.session?.workshopName;
+    if (workshopName) {
+      provider.setActiveWorkshop(workshopName);
     }
   }
 
   if (treeView.visible) {
     onViewVisible();
   }
-  if (!isWorkshop()) {
+  if (!isWorkshopWindow()) {
     workshopCommands.resumePendingOperation();
   }
 
