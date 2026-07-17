@@ -6,7 +6,7 @@ import * as fs from 'fs';
 import * as vscode from 'vscode';
 
 import { WorkshopClient } from '../api/client';
-import { refreshAndReopen } from '../reopen';
+import { refreshAndReopen, refreshWorkshop } from '../reopen';
 import { Workshop } from '../api/workshops';
 
 // ---------------------------------------------------------------------------
@@ -160,6 +160,35 @@ suite('refreshAndReopen', () => {
       const uri = (openFolder.args[0] as vscode.Uri).toString();
       assert.ok(uri.includes('web.proj-1.wp'), `URI has hostname: ${uri}`);
       assert.ok(connected, 'resolves the hostname on a successful connect');
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  test('refreshWorkshop can abort without reopening', async () => {
+    const capturedBodies: unknown[] = [];
+    const server = await startFakeDaemon(socketPath, {
+      refreshStatus: 'Done',
+      captureBody: (body) => capturedBodies.push(body),
+    });
+    try {
+      const client = new WorkshopClient({ socketPath });
+      const workshop: Workshop = {
+        name: 'web',
+        status: 'Waiting',
+        projectId: 'proj-1',
+      };
+
+      const commands = await captureCommands(async () => {
+        await refreshWorkshop(client, workshop, { mode: 'abort' });
+      });
+
+      const body = capturedBodies[0] as { options: { mode: string } };
+      assert.strictEqual(body.options.mode, 'abort');
+      assert.strictEqual(
+        commands.find((command) => command.command === 'vscode.openFolder'),
+        undefined,
+      );
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }

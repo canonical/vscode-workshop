@@ -2,7 +2,14 @@ import * as vscode from 'vscode';
 
 import { WorkshopClient } from './api/client';
 import { canRefresh, listProjectWorkshops, Workshop } from './api/workshops';
-import { refreshAndReopen, reopenInWorkshop, ReopenCallbacks, runAction } from './reopen';
+import {
+  refreshAndReopen,
+  refreshWorkshop,
+  reopenInWorkshop,
+  ReopenCallbacks,
+  RefreshMode,
+  runAction,
+} from './reopen';
 import {
   clearPendingOp,
   clearSession,
@@ -29,8 +36,6 @@ export interface WorkshopCommands {
   openDefinition(arg: WorkshopItem | string): void;
   turnOff(item: WorkshopItem): Promise<void>;
 }
-
-type RefreshMode = 'wait-on-error' | 'continue' | 'abort';
 
 interface WorkshopCommandDependencies {
   client: WorkshopClient;
@@ -195,13 +200,14 @@ export function createWorkshopCommands({
     }
     const logLines: string[] = [];
     const action = mode === 'wait-on-error' ? 'refresh and reopen' : `${mode} refresh`;
-    refreshAndReopen(
-      client,
-      item.workshop,
-      withSession(item.workshop, refreshCallbacks(item.workshop, logLines)),
-      mode,
-      mode !== 'abort',
-    ).catch((err: unknown) => {
+    const callbacks = refreshCallbacks(item.workshop, logLines);
+    const operation = mode === 'abort'
+      ? refreshWorkshop(client, item.workshop, { mode, onLog: callbacks.onLog })
+      : refreshAndReopen(client, item.workshop, {
+        ...withSession(item.workshop, callbacks),
+        mode,
+      });
+    operation.catch((err: unknown) => {
       log.error(`Failed to ${action} ${item.workshop.name}: ${err instanceof Error ? err.message : String(err)}`);
       void showResolvedWorkshopError(item.workshop, err, logLines);
     });
@@ -303,9 +309,10 @@ export function createWorkshopCommands({
     refreshAndReopen(
       client,
       workshop,
-      withSession(workshop, refreshCallbacks(workshop, logLines)),
-      op.mode,
-      true,
+      {
+        ...withSession(workshop, refreshCallbacks(workshop, logLines)),
+        mode: op.mode,
+      },
     ).catch((err: unknown) => {
       const action = op.mode === 'wait-on-error' ? 'refresh and reopen' : `${op.mode} refresh`;
       log.error(`Failed to ${action} ${workshop.name}: ${err instanceof Error ? err.message : String(err)}`);
@@ -380,7 +387,7 @@ export function createWorkshopCommands({
       },
       async (progress) => {
         progress.report({ message: 'turning off…' });
-        await runAction(client, workshop.projectId, workshop.name, 'remove', progress, {}, false);
+        await runAction(client, workshop, 'remove', progress);
       },
     );
   }
