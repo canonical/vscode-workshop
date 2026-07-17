@@ -198,7 +198,7 @@ suite('WorkshopsTreeProvider', () => {
       .find((item) => (item as vscode.TreeItem).label === 'Publisher') as vscode.TreeItem;
 
     assert.strictEqual((verifiedPublisher.iconPath as vscode.ThemeIcon).id, 'verified');
-    assert.strictEqual((communityPublisher.iconPath as vscode.ThemeIcon).id, 'account');
+    assert.strictEqual(communityPublisher.iconPath, undefined);
 
     poller.dispose();
     provider.dispose();

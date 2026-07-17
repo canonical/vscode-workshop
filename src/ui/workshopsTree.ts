@@ -346,15 +346,15 @@ export class WorkshopsTreeProvider
     const items: WorkshopInfoItem[] = [];
 
     if (text(details.base)) {
-      items.push(new WorkshopInfoItem('Base', [], { description: details.base, icon: 'server-environment' }));
+      items.push(new WorkshopInfoItem('Base', [], { description: details.base }));
     }
     if (text(details.hostname)) {
-      items.push(new WorkshopInfoItem('Hostname', [], { description: details.hostname, icon: 'globe' }));
+      items.push(new WorkshopInfoItem('Hostname', [], { description: details.hostname }));
     }
     if ((details.notes?.length ?? 0) > 0) {
       items.push(new WorkshopInfoItem('Notes', details.notes?.map((note) =>
-        new WorkshopInfoItem(note, [], { icon: 'note' }),
-      ) ?? [], { icon: 'note', collapsibleState: vscode.TreeItemCollapsibleState.Expanded }));
+        new WorkshopInfoItem(note),
+      ) ?? [], { collapsibleState: vscode.TreeItemCollapsibleState.Expanded }));
     }
 
     items.push(this.sdkGroup(details.sdks ?? []));
@@ -392,7 +392,7 @@ export class WorkshopsTreeProvider
   private sdkItem(sdk: SdkInfo): WorkshopInfoItem {
     const children: WorkshopInfoItem[] = [];
     if (!isSystemSdk(sdk)) {
-      children.push(new WorkshopInfoItem('Channel', [], { description: channelLabel(sdk), icon: 'versions' }));
+      children.push(new WorkshopInfoItem('Channel', [], { description: channelLabel(sdk) }));
     }
     const website = text(sdk.website);
     const publisher = publisherLabel(sdk.publisher);
@@ -410,22 +410,22 @@ export class WorkshopsTreeProvider
     if (publisher) {
       children.push(new WorkshopInfoItem('Publisher', [], {
         description: publisher.label,
-        icon: publisher.verified ? 'verified' : 'account',
+        icon: publisher.verified ? 'verified' : undefined,
       }));
     }
     if (text(sdk.version)) {
-      children.push(new WorkshopInfoItem('Version', [], { description: sdk.version, icon: 'tag' }));
+      children.push(new WorkshopInfoItem('Version', [], { description: sdk.version }));
     }
     if (text(sdk.revision)) {
-      children.push(new WorkshopInfoItem('Revision', [], { description: sdk.revision, icon: 'git-commit' }));
+      children.push(new WorkshopInfoItem('Revision', [], { description: sdk.revision }));
     }
     const installedAt = text(sdk['installed-at']);
     if (installedAt) {
-      children.push(new WorkshopInfoItem('Installed', [], { description: dateTimeLabel(installedAt), icon: 'calendar' }));
+      children.push(new WorkshopInfoItem('Installed', [], { description: dateTimeLabel(installedAt) }));
     }
     const builtAt = text(sdk['built-at']);
     if (builtAt) {
-      children.push(new WorkshopInfoItem('Built', [], { description: dateTimeLabel(builtAt), icon: 'tools' }));
+      children.push(new WorkshopInfoItem('Built', [], { description: dateTimeLabel(builtAt) }));
     }
     if (sdk['health-check']) {
       children.push(new WorkshopInfoItem('Health', [], {
@@ -435,7 +435,7 @@ export class WorkshopsTreeProvider
       }));
     }
     if (text(sdk.source)) {
-      children.push(new WorkshopInfoItem('Source', [], { description: sdk.source, icon: 'folder' }));
+      children.push(new WorkshopInfoItem('Source', [], { description: sdk.source }));
     }
     return new WorkshopInfoItem(sdk.name, children, {
       description: isSystemSdk(sdk) && !text(sdk.channel) ? undefined : channelLabel(sdk),
