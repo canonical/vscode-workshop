@@ -22,8 +22,7 @@ export interface WorkshopSession {
 /**
  * An operation deferred to the local window because it must run against the
  * local daemon.  Stored under `'workshop.pendingOps'` keyed by
- * `localProjectPath` so it can only be consumed by the window that owns that
- * project — stale ops from other projects are structurally invisible.
+ * project ID so it can only be consumed by the window that owns that project.
  */
 export type PendingOperation =
   | { kind: 'refresh'; workshopName: string; projectId: string; mode: 'wait-on-error' | 'continue' | 'abort' }
@@ -123,7 +122,3 @@ export function clearPendingOp(
   const { [projectId]: _removed, ...rest } = all;
   return globalState.update(PENDING_OPS_KEY, Object.keys(rest).length > 0 ? rest : undefined);
 }
-
-// ---------------------------------------------------------------------------
-// Path resolution
-// ---------------------------------------------------------------------------

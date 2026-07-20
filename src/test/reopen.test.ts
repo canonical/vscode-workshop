@@ -27,7 +27,10 @@ interface CapturedCommand {
  * Intercept every `vscode.commands.executeCommand` call while `body` runs.
  * Replaces `vscode.openFolder` so the window does not actually reopen.
  */
-async function captureCommands(body: () => Promise<unknown>): Promise<CapturedCommand[]> {
+async function captureCommands(
+  body: () => Promise<unknown>,
+  onCommand?: (command: string) => void,
+): Promise<CapturedCommand[]> {
   const original = vscode.commands.executeCommand;
   const captured: CapturedCommand[] = [];
 
@@ -35,6 +38,7 @@ async function captureCommands(body: () => Promise<unknown>): Promise<CapturedCo
     command: string,
     ...args: unknown[]
   ) => {
+    onCommand?.(command);
     captured.push({ command, args });
     return Promise.resolve(undefined);
   }) as ExecuteCommand;
@@ -138,16 +142,24 @@ suite('reopenInWorkshop', () => {
     socketPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'workshopd-')), 'workshop.socket');
   });
 
-  test('calls openFolder with ssh-remote URI and forceReuseWindow for a running workshop', async () => {
+  test('runs onBeforeOpen before opening a running workshop', async () => {
     const { server, wss } = await startFakeDaemon(socketPath, {});
     try {
       const client = new WorkshopClient({ socketPath });
       const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready', hostname: 'web.proj-1.wp', projectId: 'proj-1' };
+      const events: string[] = [];
 
-      const commands = await captureCommands(() =>
-        reopenInWorkshop(client, workshop),
+      const commands = await captureCommands(
+        () => reopenInWorkshop(client, workshop, {
+          onBeforeOpen: (hostname) => { events.push(`before:${hostname}`); },
+        }),
+        (command) => { events.push(`command:${command}`); },
       );
 
+      assert.deepStrictEqual(events.slice(-2), [
+        'before:web.proj-1.wp',
+        'command:vscode.openFolder',
+      ]);
       const openFolder = commands.find((c) => c.command === 'vscode.openFolder');
       assert.ok(openFolder, 'vscode.openFolder was called');
       const uri = openFolder.args[0] as vscode.Uri;

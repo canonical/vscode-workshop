@@ -17,6 +17,7 @@ const fakeDetailsClient = {
 
 type ExecuteCommand = typeof vscode.commands.executeCommand;
 type MutableCommands = { executeCommand: ExecuteCommand };
+type ThemeAwareIcon = { light: vscode.Uri; dark: vscode.Uri };
 
 /**
  * Intercepts setContext calls for UNAVAILABLE_CONTEXT, runs body,
@@ -56,6 +57,50 @@ suite('WorkshopsTreeProvider', () => {
     assert.strictEqual(items.length, 2);
     assert.strictEqual((items[0] as vscode.TreeItem).label, 'web');
     assert.strictEqual((items[1] as vscode.TreeItem).label, 'db');
+
+    poller.dispose();
+    provider.dispose();
+  });
+
+  test('uses workshop SVG icons by tree status', async () => {
+    const workshops: Workshop[] = [
+      { name: 'web', status: 'On', projectId: 'proj-1' },
+      { name: 'api', status: 'On', projectId: 'proj-1' },
+      { name: 'db', status: 'Off', projectId: 'proj-1' },
+      { name: 'cache', status: 'Waiting', projectId: 'proj-1' },
+    ];
+    const poller = new WorkshopPoller<Workshop[]>(() => Promise.resolve(workshops), 50_000);
+    const extensionUri = vscode.Uri.file('/extension');
+    const provider = new WorkshopsTreeProvider(poller, fakeDetailsClient, undefined, extensionUri);
+
+    await poller.poll();
+    provider.setActiveWorkshop('web');
+
+    const items = provider.getChildren() as vscode.TreeItem[];
+    const icons = new Map(items.map((item) => {
+      const icon = item.iconPath as ThemeAwareIcon;
+      return [
+        item.label,
+        { light: icon.light.path, dark: icon.dark.path },
+      ];
+    }));
+
+    assert.deepStrictEqual(icons.get('web'), {
+      light: '/extension/media/workshop-active.svg',
+      dark: '/extension/media/workshop-active-dark.svg',
+    });
+    assert.deepStrictEqual(icons.get('api'), {
+      light: '/extension/media/workshop-ready.svg',
+      dark: '/extension/media/workshop-ready-dark.svg',
+    });
+    assert.deepStrictEqual(icons.get('db'), {
+      light: '/extension/media/workshop-off.svg',
+      dark: '/extension/media/workshop-off-dark.svg',
+    });
+    assert.deepStrictEqual(icons.get('cache'), {
+      light: '/extension/media/workshop-waiting.svg',
+      dark: '/extension/media/workshop-waiting-dark.svg',
+    });
 
     poller.dispose();
     provider.dispose();
@@ -131,6 +176,7 @@ suite('WorkshopsTreeProvider', () => {
   test('loads workshop details as child rows when a workshop is expanded', async () => {
     const workshops: Workshop[] = [{ name: 'web', status: 'On', projectId: 'proj-1' }];
     const poller = new WorkshopPoller<Workshop[]>(() => Promise.resolve(workshops), 50_000);
+    const extensionUri = vscode.Uri.file('/extension');
     const provider = new WorkshopsTreeProvider(poller, {
       getWorkshop: async () => ({
         'project-id': 'proj-1',
@@ -140,7 +186,7 @@ suite('WorkshopsTreeProvider', () => {
         hostname: 'web.wp',
         sdks: [{ name: 'node', channel: '22/stable' }],
       }),
-    });
+    }, undefined, extensionUri);
 
     await poller.poll();
     const workshop = provider.getChildren()[0];
@@ -153,8 +199,43 @@ suite('WorkshopsTreeProvider', () => {
     assert.strictEqual(children.some((item) => (item as vscode.TreeItem).label === 'Hostname'), true);
     const sdks = children.find((item) => (item as vscode.TreeItem).label === 'SDKs') as vscode.TreeItem | undefined;
     assert.ok(sdks);
+    const sdksIcon = sdks.iconPath as ThemeAwareIcon;
+    assert.deepStrictEqual({
+      light: sdksIcon.light.path,
+      dark: sdksIcon.dark.path,
+    }, {
+      light: '/extension/media/sdks.svg',
+      dark: '/extension/media/sdks-dark.svg',
+    });
     const sdkChildren = provider.getChildren(sdks);
     assert.strictEqual((sdkChildren[0] as vscode.TreeItem).label, 'node');
+    assert.strictEqual((sdkChildren[0] as vscode.TreeItem).iconPath, undefined);
+
+    poller.dispose();
+    provider.dispose();
+  });
+
+  test('loads workshop details for waiting workshops', async () => {
+    const workshops: Workshop[] = [{ name: 'web', status: 'Waiting', projectId: 'proj-1' }];
+    const poller = new WorkshopPoller<Workshop[]>(() => Promise.resolve(workshops), 50_000);
+    const provider = new WorkshopsTreeProvider(poller, {
+      getWorkshop: async () => ({
+        'project-id': 'proj-1',
+        name: 'web',
+        base: 'ubuntu@24.04',
+        status: 'waiting',
+        sdks: [],
+      }),
+    });
+
+    await poller.poll();
+    const workshop = provider.getChildren()[0];
+    const loading = provider.getChildren(workshop);
+    assert.strictEqual((loading[0] as vscode.TreeItem).label, 'Loading...');
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const children = provider.getChildren(workshop);
+    assert.strictEqual(children.some((item) => (item as vscode.TreeItem).label === 'Base'), true);
 
     poller.dispose();
     provider.dispose();
@@ -171,6 +252,9 @@ suite('WorkshopsTreeProvider', () => {
         sdks: [
           {
             name: 'verified-sdk',
+            channel: 'latest/stable',
+            website: 'https://example.com',
+            version: '1.0.0',
             publisher: { username: 'canonical', validation: 'verified' },
           },
           {
@@ -196,9 +280,14 @@ suite('WorkshopsTreeProvider', () => {
       .find((item) => (item as vscode.TreeItem).label === 'Publisher') as vscode.TreeItem;
     const communityPublisher = provider.getChildren(communitySdk)
       .find((item) => (item as vscode.TreeItem).label === 'Publisher') as vscode.TreeItem;
+    const verifiedSdkChildren = provider.getChildren(verifiedSdk) as vscode.TreeItem[];
 
     assert.strictEqual((verifiedPublisher.iconPath as vscode.ThemeIcon).id, 'verified');
     assert.strictEqual(communityPublisher.iconPath, undefined);
+    assert.deepStrictEqual(
+      verifiedSdkChildren.slice(-2).map((item) => item.label),
+      ['Website', 'Publisher'],
+    );
 
     poller.dispose();
     provider.dispose();
@@ -267,7 +356,7 @@ suite('WorkshopsTreeProvider', () => {
     provider.dispose();
   });
 
-  test('does not show info children for non-ready workshops', async () => {
+  test('shows a disclosure slot but no info children for off workshops', async () => {
     let calls = 0;
     const workshops: Workshop[] = [{ name: 'web', status: 'Off', projectId: 'proj-1' }];
     const poller = new WorkshopPoller<Workshop[]>(() => Promise.resolve(workshops), 50_000);
@@ -280,7 +369,7 @@ suite('WorkshopsTreeProvider', () => {
 
     await poller.poll();
     const workshop = provider.getChildren()[0] as vscode.TreeItem;
-    assert.strictEqual(workshop.collapsibleState, vscode.TreeItemCollapsibleState.None);
+    assert.strictEqual(workshop.collapsibleState, vscode.TreeItemCollapsibleState.Collapsed);
     assert.deepStrictEqual(provider.getChildren(workshop), []);
     assert.strictEqual(calls, 0);
 

@@ -1,97 +1,81 @@
 import * as vscode from 'vscode';
 
-import { Change, ERROR_KIND_NO_UPDATES_AVAILABLE, WorkshopApiError, WorkshopClient } from './api/client';
+import {
+  Change,
+  ERROR_KIND_NO_UPDATES_AVAILABLE,
+  WorkshopApiError,
+  WorkshopClient,
+} from './api/client';
 import { Workshop, reopenAction } from './api/workshops';
 import { ensureDaemonSshInclude } from './remote/ssh';
 
-/** How long to wait between change-poll requests during a launch. */
-const LAUNCH_POLL_MS = 200;
+const ACTION_POLL_MS = 200;
 
-/** Callbacks for the launch phase of {@link reopen
- *}. */
+export type PauseChoice = 'debug' | 'abort' | 'dismiss';
+export type RefreshMode = 'wait-on-error' | 'continue' | 'abort';
+
 export interface ReopenCallbacks {
-  /**
-   * Called whenever new verbose log lines arrive from the daemon during a
-   * `launch` operation. Lines are in the order the daemon produced them.
-   */
   onLog?: (lines: string[]) => void;
-  /**
-   * Called when a `wait-on-error` refresh pauses (Wait state) because a task
-   * failed. Receives the failure message from the change. Lets the caller
-   * surface the logs and choose how to proceed:
-   *   - `debug`   — connect into the paused workshop to investigate.
-   *   - `abort`   — unwind the paused refresh (no connect).
-   *   - `dismiss` — leave it paused and do nothing.
-   * When omitted, a paused refresh is treated as `dismiss`.
-   */
+  /** Persist any state needed by the new window before this host is replaced. */
+  onBeforeOpen?: (hostname: string) => Thenable<void> | void;
   onPause?: (error: string) => Promise<PauseChoice>;
 }
 
-/** How to proceed when a `wait-on-error` refresh pauses on a failure. */
-export type PauseChoice = 'debug' | 'abort' | 'dismiss';
+export interface RefreshOptions extends ReopenCallbacks {
+  mode?: RefreshMode;
+}
 
-/**
- * Reopen the current VS Code window connected to a workshop over Remote-SSH.
- *
- * 1. If the workshop is not running, starts or launches it first.
- *    - `start` (stopped workshop): blocking REST action, shows "starting…".
- *    - `launch` (never-built workshop): verbose polling loop that streams task
- *      summaries into the notification and task log lines via {@link ReopenCallbacks.onLog}.
- * 2. Reads `hostname` from a single `getWorkshop` call.
- * 3. Ensures `~/.ssh/config` includes the workshopd CA config so Remote-SSH
- *    trusts the workshop's host certificate and uses the signed user cert.
- * 4. Calls `openFolder` with `forceReuseWindow: true`.
- *
- * Returns the SSH hostname used to open the remote window (e.g.
- * `'web.proj-1.wp'`).  Callers store this in `globalState` so "Reopen Locally"
- * can find its way back.
- */
+interface RunActionOptions {
+  verbose?: boolean;
+  actionOptions?: Record<string, unknown>;
+  onLog?: (lines: string[]) => void;
+}
+
+type RefreshResult =
+  | { status: 'ready' }
+  | { status: 'paused'; error: string };
+
+/** Reopen the current window connected to a workshop over Remote-SSH. */
 export async function reopenInWorkshop(
   client: WorkshopClient,
   workshop: Workshop,
   callbacks: ReopenCallbacks = {},
 ): Promise<string> {
-  const projectId = workshop.projectId;
-
   let connectedHostname = '';
 
   await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
-      title: `${workshop.name}`,
+      title: workshop.name,
       cancellable: false,
     },
     async (progress) => {
       const action = reopenAction(workshop);
-
-      // Step 1: bring the workshop online if needed.
       if (action !== 'connect') {
         progress.report({ message: 'turning on…' });
-        const change = await runAction(
-          client, projectId, workshop.name, action, progress, callbacks,
-          /* verbose */ action === 'launch',
-        );
+        const change = await runAction(client, workshop, action, progress, {
+          verbose: action === 'launch',
+          onLog: callbacks.onLog,
+        });
         if (change.err) {
           throw new WorkshopApiError(change.err, 0);
         }
       }
 
-      // Step 2: read the hostname.
-      const info = await client.getWorkshop(projectId, workshop.name);
+      const info = await client.getWorkshop(workshop.projectId, workshop.name);
       if (!info.hostname) {
         throw new Error(
           `"${workshop.name}" is not reachable (status: ${info.status}). ` +
-          `The workshop state may have changed — please try again.`,
+          'The workshop state may have changed — please try again.',
         );
       }
       connectedHostname = info.hostname;
 
-      // Step 3: ensure workshopd's CA config is included in ~/.ssh/config.
       ensureDaemonSshInclude(client.socket);
 
-      // Step 4: reopen in the same window via Remote-SSH.
       progress.report({ message: 'Opening…' });
       const uri = vscode.Uri.parse(`vscode-remote://ssh-remote+${connectedHostname}/project`);
+      await callbacks.onBeforeOpen?.(connectedHostname);
       await vscode.commands.executeCommand('vscode.openFolder', uri, {
         forceReuseWindow: true,
       });
@@ -101,47 +85,29 @@ export async function reopenInWorkshop(
   return connectedHostname;
 }
 
-/**
- * POST a workshop action and poll the change, mirroring the progress-tracking
- * loop in `cmd/workshop/wait.go`:
- *
- * - Reports each "Doing" task's `summary` in the VS Code notification.
- * - When `verbose` is true, emits new task log lines via
- *   {@link ReopenCallbacks.onLog} so the caller can stream them into the Logs
- *   View panel.
- *
- * Returns the final Change without throwing — callers must check `.err` and
- * `.status` (e.g. `'Wait'` for a paused `wait-on-error` refresh).
- */
+/** POST an action and poll its change while reporting progress and new logs. */
 export async function runAction(
   client: WorkshopClient,
-  projectId: string,
-  name: string,
+  workshop: Pick<Workshop, 'projectId' | 'name'>,
   action: 'start' | 'launch' | 'refresh' | 'remove',
   progress: vscode.Progress<{ message?: string }>,
-  callbacks: ReopenCallbacks,
-  verbose: boolean,
-  options?: Record<string, unknown>,
+  options: RunActionOptions = {},
 ): Promise<Change> {
-  const body: Record<string, unknown> = { names: [name], action };
-  if (options && Object.keys(options).length > 0) {
-    body['options'] = options;
+  const body: Record<string, unknown> = { names: [workshop.name], action };
+  if (options.actionOptions && Object.keys(options.actionOptions).length > 0) {
+    body['options'] = options.actionOptions;
   }
   const { change: changeId } = await client.postAsync(
-    `/v1/projects/${encodeURIComponent(projectId)}/workshops`,
+    `/v1/projects/${encodeURIComponent(workshop.projectId)}/workshops`,
     body,
   );
-
-  // Track how many log lines we have already forwarded per task, so we only
-  // emit newly-arrived lines on each poll — same as seenLines in wait.go.
   const seenLines = new Map<string, number>();
 
   for (;;) {
-    const chg = await client.getChange(changeId, verbose);
+    const change = await client.getChange(changeId, options.verbose ?? false);
 
-    // Collect newly-arrived log lines across all tasks.
     const newLines: string[] = [];
-    for (const task of chg.tasks ?? []) {
+    for (const task of change.tasks ?? []) {
       const seen = seenLines.get(task.id) ?? 0;
       const taskLog = task.log ?? [];
       if (taskLog.length > seen) {
@@ -150,158 +116,106 @@ export async function runAction(
       }
     }
     if (newLines.length > 0) {
-      callbacks.onLog?.(newLines);
+      options.onLog?.(newLines);
     }
 
-    // Show the first active task's description in the notification bubble,
-    // appending a `done/total` counter when the task reports determinate
-    // progress (total > 1). We keep the counter in the message rather than
-    // using the notification's `increment` bar: a notification progress bar
-    // can't switch back from determinate to the indeterminate spinner, so a
-    // completed determinate task would leave the bar stuck at 100% for later
-    // tasks that report no progress.
-    const doingTask = chg.tasks?.find(
-      (t) => t.status === 'Doing' || t.status === 'Undoing',
+    const activeTask = change.tasks?.find(
+      (task) => task.status === 'Doing' || task.status === 'Undoing',
     );
-    if (doingTask?.summary) {
-      const p = doingTask.progress;
-      const percent = p && p.total > 1
-        ? Math.min(100, Math.max(0, Math.round((p.done / p.total) * 100)))
+    if (activeTask?.summary) {
+      const taskProgress = activeTask.progress;
+      const percent = taskProgress && taskProgress.total > 1
+        ? Math.min(100, Math.max(0, Math.round((taskProgress.done / taskProgress.total) * 100)))
         : undefined;
-      const message = percent !== undefined
-        ? `${doingTask.summary} (${percent}%)`
-        : doingTask.summary;
-      progress.report({ message });
+      progress.report({
+        message: percent === undefined
+          ? activeTask.summary
+          : `${activeTask.summary} (${percent}%)`,
+      });
     }
 
-    // Exit when done or paused. A change only reaches `Wait` via a
-    // `wait-on-error` operation (which the daemon allows for launch/refresh but
-    // not start/stop/remove), so this is safe for every action: `ready` means
-    // the workshop is up, `Wait` means it paused for the caller to handle.
-    if (chg.ready || chg.status === 'Wait') {
-      return chg;
+    if (change.ready || change.status === 'Wait') {
+      return change;
     }
-
-    await new Promise<void>((resolve) => setTimeout(resolve, LAUNCH_POLL_MS));
+    await new Promise<void>((resolve) => setTimeout(resolve, ACTION_POLL_MS));
   }
 }
 
-/** Progress-notification verb shown while each refresh mode runs. */
-const REFRESH_VERB: Record<'wait-on-error' | 'continue' | 'abort', string> = {
+const REFRESH_VERB: Record<RefreshMode, string> = {
   'wait-on-error': 'refreshing…',
   continue: 'continuing…',
   abort: 'aborting…',
 };
 
-/**
- * Refresh a workshop from its definition file and reopen the current VS Code
- * window connected to it.
- *
- * 1. POST a `refresh` action with the given `mode` and poll the change with
- *    `verbose=true`, streaming task summaries and log lines while the build
- *    runs — same loop as the `launch` path in {@link reopen
- *}.
- * 2. If the change pauses (`Wait` state) the refresh failed on a task; defer to
- *    {@link ReopenCallbacks.onPause} so the caller can show the logs and choose
- *    to debug (connect), abort (unwind), or dismiss.
- * 3. On success, call {@link reopen
- *} on the `connect` path (no
- *    second action needed — the workshop is running after a successful refresh).
- *
- * `mode` selects the refresh behaviour:
- *   - `wait-on-error` — normal refresh; pause on the first failing task.
- *   - `continue`      — resume a workshop paused mid-refresh.
- *   - `abort`         — unwind a workshop paused mid-refresh.
- *
- * `reopen` controls whether to connect into the workshop afterwards. An
- * `abort` triggered from a local window just unwinds and stays local, so the
- * caller passes `false`; every other path reopens.
- *
- * Resolves to the SSH hostname when it actually connected into the workshop,
- * `false` when it returned without connecting (paused-and-dismissed, aborted,
- * or `reopen` was `false`). Callers use the hostname to record the session.
- */
-export async function refreshAndReopen(
+/** Refresh a workshop without deciding whether another window should open. */
+export async function refreshWorkshop(
   client: WorkshopClient,
   workshop: Workshop,
-  callbacks: ReopenCallbacks = {},
-  mode: 'wait-on-error' | 'continue' | 'abort' = 'wait-on-error',
-  doReopen = true,
-): Promise<string | false> {
-  const projectId = workshop.projectId;
+  options: Pick<RefreshOptions, 'mode' | 'onLog'> = {},
+): Promise<RefreshResult> {
+  const mode = options.mode ?? 'wait-on-error';
 
-  // Phase 1: run the refresh action with verbose polling so task summaries and
-  // log lines are streamed in real time — same approach as launchVerbose.
-  let paused = false;
-  let pauseError = '';
-  await vscode.window.withProgress(
+  return vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
-      title: `${workshop.name}`,
+      title: workshop.name,
       cancellable: false,
     },
     async (progress) => {
       progress.report({ message: REFRESH_VERB[mode] });
-      let change;
+      let change: Change;
       try {
-        change = await runAction(
-          client,
-          projectId,
-          workshop.name,
-          'refresh',
-          progress,
-          callbacks,
-          true,
-          { mode },
-        );
+        change = await runAction(client, workshop, 'refresh', progress, {
+          verbose: true,
+          onLog: options.onLog,
+          actionOptions: { mode },
+        });
       } catch (err) {
-        // "no updates available" isn't a failure: the definition already
-        // matches the running workshop, so there's nothing to refresh. Fall
-        // through to reopening.
         if (err instanceof WorkshopApiError && err.kind === ERROR_KIND_NO_UPDATES_AVAILABLE) {
-          return;
+          return { status: 'ready' };
         }
         throw err;
       }
 
       if (change.status === 'Wait') {
-        paused = true;
-        // The change parked in Wait: one or more tasks are themselves in Wait,
-        // paused before they could run. Surface their descriptions the way the
-        // CLI does — "cannot perform the following tasks:" followed by a
-        // bulleted list of the waiting task summaries.
-        const waiting = (change.tasks ?? [])
-          .filter((t) => t.status === 'Wait' && t.summary)
-          .map((t) => `  - ${t.summary}`);
-        pauseError = waiting.length > 0
-          ? `Cannot perform the following tasks:\n${waiting.join('\n')}`
-          : 'refresh waits on a failing task';
-      } else if (change.err) {
+        return { status: 'paused', error: waitingError(change) };
+      }
+      if (change.err) {
         throw new WorkshopApiError(change.err, 0);
       }
+      return { status: 'ready' };
     },
   );
+}
 
-  // Phase 2: if paused, the refresh failed on a task. Let the caller surface
-  // the logs and choose how to proceed.
-  if (paused) {
-    const choice = (await callbacks.onPause?.(pauseError)) ?? 'dismiss';
+/** Refresh a workshop, handle a pause decision, and reconnect when appropriate. */
+export async function refreshAndReopen(
+  client: WorkshopClient,
+  workshop: Workshop,
+  options: RefreshOptions = {},
+): Promise<string | false> {
+  const result = await refreshWorkshop(client, workshop, options);
+  if (result.status === 'paused') {
+    const choice = (await options.onPause?.(result.error)) ?? 'dismiss';
     if (choice === 'abort') {
-      // Unwind the paused refresh and stay put — no connect.
-      await refreshAndReopen(client, workshop, { onLog: callbacks.onLog }, 'abort', false);
+      await refreshWorkshop(client, workshop, {
+        mode: 'abort',
+        onLog: options.onLog,
+      });
       return false;
     }
     if (choice !== 'debug') {
       return false;
     }
   }
+  return reopenInWorkshop(client, workshop, options);
+}
 
-  // Phase 3: connect, unless the caller opted out (e.g. a local abort). The
-  // workshop is running after a successful refresh (or the user chose to debug
-  // a paused one); reopen
-  // just connects.
-  if (!doReopen) {
-    return false;
-  }
-  return reopenInWorkshop(client, workshop, callbacks);
+function waitingError(change: Change): string {
+  const waiting = (change.tasks ?? [])
+    .filter((task) => task.status === 'Wait' && task.summary)
+    .map((task) => `  - ${task.summary}`);
+  return waiting.length > 0
+    ? `Cannot perform the following tasks:\n${waiting.join('\n')}`
+    : 'refresh waits on a failing task';
 }
