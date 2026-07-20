@@ -350,8 +350,11 @@ export function createWorkshopCommands({
 
   async function turnOff(item: WorkshopItem): Promise<void> {
     const workshop = item.workshop;
+    const current = currentWorkshop(globalState);
+    const turningOffCurrent = current?.session?.projectId === workshop.projectId
+      && current.session.workshopName === workshop.name;
 
-    if (isWorkshopWindow()) {
+    if (isWorkshopWindow() && turningOffCurrent) {
       const project = await client.getProject(workshop.projectId);
       if (!project) {
         void vscode.window.showErrorMessage(
