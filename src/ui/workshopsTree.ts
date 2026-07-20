@@ -102,6 +102,10 @@ function workshopIcon(
   return statusIcon(status);
 }
 
+function canShowWorkshopInfo(status: Workshop['status']): boolean {
+  return status === 'On' || status === 'Waiting';
+}
+
 /** A single workshop row in the tree. */
 export class WorkshopItem extends vscode.TreeItem {
   constructor(
@@ -202,7 +206,7 @@ export class WorkshopsTreeProvider
       return element.children;
     }
     if (element instanceof WorkshopItem) {
-      if (element.workshop.status !== 'On') {
+      if (!canShowWorkshopInfo(element.workshop.status)) {
         return [];
       }
       return this.infoChildren(element.workshop);

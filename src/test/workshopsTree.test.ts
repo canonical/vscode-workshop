@@ -215,6 +215,32 @@ suite('WorkshopsTreeProvider', () => {
     provider.dispose();
   });
 
+  test('loads workshop details for waiting workshops', async () => {
+    const workshops: Workshop[] = [{ name: 'web', status: 'Waiting', projectId: 'proj-1' }];
+    const poller = new WorkshopPoller<Workshop[]>(() => Promise.resolve(workshops), 50_000);
+    const provider = new WorkshopsTreeProvider(poller, {
+      getWorkshop: async () => ({
+        'project-id': 'proj-1',
+        name: 'web',
+        base: 'ubuntu@24.04',
+        status: 'waiting',
+        sdks: [],
+      }),
+    });
+
+    await poller.poll();
+    const workshop = provider.getChildren()[0];
+    const loading = provider.getChildren(workshop);
+    assert.strictEqual((loading[0] as vscode.TreeItem).label, 'Loading...');
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const children = provider.getChildren(workshop);
+    assert.strictEqual(children.some((item) => (item as vscode.TreeItem).label === 'Base'), true);
+
+    poller.dispose();
+    provider.dispose();
+  });
+
   test('uses verified icon only for verified SDK publishers', async () => {
     const workshops: Workshop[] = [{ name: 'web', status: 'On', projectId: 'proj-1' }];
     const poller = new WorkshopPoller<Workshop[]>(() => Promise.resolve(workshops), 50_000);
@@ -330,7 +356,7 @@ suite('WorkshopsTreeProvider', () => {
     provider.dispose();
   });
 
-  test('shows a disclosure slot but no info children for non-ready workshops', async () => {
+  test('shows a disclosure slot but no info children for off workshops', async () => {
     let calls = 0;
     const workshops: Workshop[] = [{ name: 'web', status: 'Off', projectId: 'proj-1' }];
     const poller = new WorkshopPoller<Workshop[]>(() => Promise.resolve(workshops), 50_000);
