@@ -35,8 +35,6 @@ export type PendingOperation =
 export const SESSIONS_KEY = 'workshop.sessions';
 export const PENDING_OPS_KEY = 'workshop.pendingOps';
 
-const returningKey = (projectId: string) => `workshop.returning.${projectId}`;
-
 // ---------------------------------------------------------------------------
 // Hostname helpers
 // ---------------------------------------------------------------------------
@@ -123,25 +121,4 @@ export function clearPendingOp(
   const all = globalState.get<Record<string, PendingOperation>>(PENDING_OPS_KEY) ?? {};
   const { [projectId]: _removed, ...rest } = all;
   return globalState.update(PENDING_OPS_KEY, Object.keys(rest).length > 0 ? rest : undefined);
-}
-
-/** Mark that the next local activation is returning from a workshop window. */
-export function markProjectReturn(
-  globalState: vscode.Memento,
-  projectId: string,
-): Thenable<void> {
-  return globalState.update(returningKey(projectId), true);
-}
-
-/** Consume and clear a one-shot workshop return marker. */
-export async function consumeProjectReturn(
-  globalState: vscode.Memento,
-  projectId: string,
-): Promise<boolean> {
-  const key = returningKey(projectId);
-  const returning = globalState.get<boolean>(key) ?? false;
-  if (returning) {
-    await globalState.update(key, undefined);
-  }
-  return returning;
 }

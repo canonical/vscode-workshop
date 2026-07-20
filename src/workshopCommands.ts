@@ -13,8 +13,6 @@ import {
 import {
   clearPendingOp,
   clearSession,
-  consumeProjectReturn,
-  markProjectReturn,
   PendingOperation,
   readPendingOp,
   writePendingOp,
@@ -142,14 +140,10 @@ export function createWorkshopCommands({
 
     void client.ensureProject(localPath)
       .then(async (project) => {
-        const returning = await consumeProjectReturn(globalState, project.id);
         const pendingOp = readPendingOp(globalState, project.id);
         if (pendingOp) {
           await clearPendingOp(globalState, project.id);
           void runPendingOperation(pendingOp);
-          return;
-        }
-        if (returning) {
           return;
         }
         await showOpenPrompt(project.id, localPath);
@@ -184,7 +178,6 @@ export function createWorkshopCommands({
       void vscode.window.showErrorMessage('Cannot reopen locally: project-id is not known to workshopd.');
       return;
     }
-    await markProjectReturn(globalState, project.id);
     await clearSession(globalState, hostname);
     await vscode.commands.executeCommand(
       'vscode.openFolder',
