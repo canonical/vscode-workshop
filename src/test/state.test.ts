@@ -9,6 +9,8 @@ import {
   readPendingOp,
   writePendingOp,
   clearPendingOp,
+  consumeProjectReturn,
+  markProjectReturn,
   SESSIONS_KEY,
   PENDING_OPS_KEY,
   WorkshopSession,
@@ -185,5 +187,25 @@ suite('pendingOp helpers', () => {
     await writePendingOp(state, 'proj-1', { kind: 'turn-off', workshopName: 'web', projectId: 'proj-1' });
     await clearPendingOp(state, 'proj-1');
     assert.strictEqual(state.get(PENDING_OPS_KEY), undefined);
+  });
+});
+
+suite('project return helpers', () => {
+  let state: MemoryMemento;
+
+  setup(() => { state = new MemoryMemento(); });
+
+  test('marker is consumed once', async () => {
+    await markProjectReturn(state, 'proj-1');
+
+    assert.strictEqual(await consumeProjectReturn(state, 'proj-1'), true);
+    assert.strictEqual(await consumeProjectReturn(state, 'proj-1'), false);
+  });
+
+  test('markers are isolated by project', async () => {
+    await markProjectReturn(state, 'proj-1');
+
+    assert.strictEqual(await consumeProjectReturn(state, 'proj-2'), false);
+    assert.strictEqual(await consumeProjectReturn(state, 'proj-1'), true);
   });
 });

@@ -13,6 +13,8 @@ import {
 import {
   clearPendingOp,
   clearSession,
+  consumeProjectReturn,
+  markProjectReturn,
   PendingOperation,
   readPendingOp,
   writePendingOp,
@@ -28,7 +30,7 @@ import {
 } from './workspaceContext';
 
 export interface WorkshopCommands {
-  resumePendingOperation(): void;
+  activateLocalProject(): void;
   definitionChanged(filePath: string, cached: Workshop[] | undefined): void;
   reopenInWorkshop(item: WorkshopItem): void;
   reopenLocally(): Promise<void>;
@@ -131,7 +133,7 @@ export function createWorkshopCommands({
     };
   }
 
-  function resumePendingOperation(): void {
+  function activateLocalProject(): void {
     const folder = vscode.workspace.workspaceFolders?.[0];
     if (!folder) {
       return;
@@ -140,33 +142,30 @@ export function createWorkshopCommands({
 
     void client.ensureProject(localPath)
       .then(async (project) => {
+        const returning = await consumeProjectReturn(globalState, project.id);
         const pendingOp = readPendingOp(globalState, project.id);
         if (pendingOp) {
           await clearPendingOp(globalState, project.id);
           void runPendingOperation(pendingOp);
           return;
         }
-        await maybeShowOpenPrompt(project.id, localPath);
+        if (returning) {
+          return;
+        }
+        await showOpenPrompt(project.id, localPath);
       })
       .catch((err: unknown) => {
         log.debug(`Open prompt skipped: ${err instanceof Error ? err.message : String(err)}`);
       });
   }
 
-  async function maybeShowOpenPrompt(projectId: string, localPath: string): Promise<void> {
-    const promptedKey = `workshop.prompted.${projectId}`;
-    if (globalState.get<boolean>(promptedKey)) {
-      return;
-    }
+  async function showOpenPrompt(projectId: string, localPath: string): Promise<void> {
     const workshops = await listProjectWorkshops(client, projectId);
-    const shown = await createOpenPrompt({
+    await createOpenPrompt({
       workshops,
       projectPath: localPath,
       reopen: async (workshop) => reopenInWorkshopCommand(new WorkshopItem(workshop)),
     });
-    if (shown) {
-      await globalState.update(promptedKey, true);
-    }
   }
 
   async function reopenLocally(): Promise<void> {
@@ -185,8 +184,9 @@ export function createWorkshopCommands({
       void vscode.window.showErrorMessage('Cannot reopen locally: project-id is not known to workshopd.');
       return;
     }
-    void clearSession(globalState, hostname);
-    void vscode.commands.executeCommand(
+    await markProjectReturn(globalState, project.id);
+    await clearSession(globalState, hostname);
+    await vscode.commands.executeCommand(
       'vscode.openFolder',
       vscode.Uri.file(project.path),
       { forceReuseWindow: true },
@@ -393,7 +393,7 @@ export function createWorkshopCommands({
   }
 
   return {
-    resumePendingOperation,
+    activateLocalProject,
     definitionChanged,
     reopenInWorkshop: reopenInWorkshopCommand,
     reopenLocally,

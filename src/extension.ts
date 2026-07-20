@@ -61,7 +61,7 @@ export function activate(context: vscode.ExtensionContext): void {
     onViewVisible();
   }
   if (!isWorkshopWindow()) {
-    workshopCommands.resumePendingOperation();
+    workshopCommands.activateLocalProject();
   }
 
   context.subscriptions.push(
