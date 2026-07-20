@@ -31,6 +31,22 @@ export const UNAVAILABLE_CONTEXT = 'workshop.unavailable';
 /** URI scheme used to key file decorations for workshop tree items. */
 const WORKSHOP_ITEM_SCHEME = 'workshop-item';
 
+type ThemeAwareIcon = { light: vscode.Uri; dark: vscode.Uri };
+type WorkshopTreeIcon = vscode.ThemeIcon | vscode.Uri | ThemeAwareIcon;
+
+const DEFAULT_EXTENSION_URI = vscode.Uri.joinPath(vscode.Uri.file(__dirname), '..');
+
+function mediaIcon(extensionUri: vscode.Uri, filename: string): vscode.Uri {
+  return vscode.Uri.joinPath(extensionUri, 'media', filename);
+}
+
+function mediaIconPair(extensionUri: vscode.Uri, basename: string): ThemeAwareIcon {
+  return {
+    light: mediaIcon(extensionUri, `${basename}.svg`),
+    dark: mediaIcon(extensionUri, `${basename}-dark.svg`),
+  };
+}
+
 /**
  * Provides a coloured label decoration for the active workshop tree item.
  * Register with {@link vscode.window.registerFileDecorationProvider}.
@@ -66,27 +82,41 @@ export class WorkshopDecorationProvider implements vscode.FileDecorationProvider
 }
 
 /** Select the tree-row icon based on status and whether this is the active workshop. */
-function workshopIcon(status: Workshop['status'], active: boolean): vscode.ThemeIcon {
+function workshopIcon(
+  status: Workshop['status'],
+  active: boolean,
+  extensionUri: vscode.Uri,
+): WorkshopTreeIcon {
   if (active) {
-    if (status === 'Waiting') {
-      return new vscode.ThemeIcon('watch', new vscode.ThemeColor('charts.yellow'));
-    }
-    return new vscode.ThemeIcon('pass-filled', new vscode.ThemeColor('charts.green'));
+    return mediaIconPair(extensionUri, 'workshop-active');
+  }
+  if (status === 'On') {
+    return mediaIconPair(extensionUri, 'workshop-ready');
+  }
+  if (status === 'Waiting') {
+    return mediaIconPair(extensionUri, 'workshop-waiting');
+  }
+  if (status === 'Off') {
+    return mediaIconPair(extensionUri, 'workshop-off');
   }
   return statusIcon(status);
 }
 
 /** A single workshop row in the tree. */
 export class WorkshopItem extends vscode.TreeItem {
-  constructor(readonly workshop: Workshop, active = false) {
+  constructor(
+    readonly workshop: Workshop,
+    active = false,
+    extensionUri = DEFAULT_EXTENSION_URI,
+  ) {
     super(
       workshop.name,
-      workshop.status === 'On' ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None,
+      vscode.TreeItemCollapsibleState.Collapsed,
     );
     this.resourceUri = vscode.Uri.from({ scheme: WORKSHOP_ITEM_SCHEME, path: `/${workshop.name}` });
     this.tooltip = workshop.name;
     this.description = workshop.status;
-    this.iconPath = workshopIcon(workshop.status, active);
+    this.iconPath = workshopIcon(workshop.status, active, extensionUri);
     if (workshop.status === 'Waiting') {
       // A paused-mid-refresh workshop offers continue/abort actions. The active
       // (connected) one is distinguished so its hover buttons can show even
@@ -133,6 +163,7 @@ export class WorkshopsTreeProvider
     poller: WorkshopPoller<Workshop[]>,
     private readonly client: WorkshopDetailsClient,
     private readonly log?: vscode.LogOutputChannel,
+    private readonly extensionUri = DEFAULT_EXTENSION_URI,
   ) {
     this.subscriptions.push(
       poller.onDidUpdate((workshops) => {
@@ -184,7 +215,7 @@ export class WorkshopsTreeProvider
     }
     return this.cachedItems.map((w) => {
       const active = w.name === this.activeWorkshopName;
-      return new WorkshopItem(w, active);
+      return new WorkshopItem(w, active, this.extensionUri);
     });
   }
 

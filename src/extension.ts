@@ -32,7 +32,7 @@ export function activate(context: vscode.ExtensionContext): void {
     return projectId ? listProjectWorkshops(client, projectId) : [];
   });
 
-  const provider = new WorkshopsTreeProvider(poller, client, log);
+  const provider = new WorkshopsTreeProvider(poller, client, log, context.extensionUri);
   const treeView = vscode.window.createTreeView('workshop.workshops', {
     treeDataProvider: provider,
   });
