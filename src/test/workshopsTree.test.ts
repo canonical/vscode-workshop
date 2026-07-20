@@ -176,6 +176,7 @@ suite('WorkshopsTreeProvider', () => {
   test('loads workshop details as child rows when a workshop is expanded', async () => {
     const workshops: Workshop[] = [{ name: 'web', status: 'On', projectId: 'proj-1' }];
     const poller = new WorkshopPoller<Workshop[]>(() => Promise.resolve(workshops), 50_000);
+    const extensionUri = vscode.Uri.file('/extension');
     const provider = new WorkshopsTreeProvider(poller, {
       getWorkshop: async () => ({
         'project-id': 'proj-1',
@@ -185,7 +186,7 @@ suite('WorkshopsTreeProvider', () => {
         hostname: 'web.wp',
         sdks: [{ name: 'node', channel: '22/stable' }],
       }),
-    });
+    }, undefined, extensionUri);
 
     await poller.poll();
     const workshop = provider.getChildren()[0];
@@ -198,8 +199,17 @@ suite('WorkshopsTreeProvider', () => {
     assert.strictEqual(children.some((item) => (item as vscode.TreeItem).label === 'Hostname'), true);
     const sdks = children.find((item) => (item as vscode.TreeItem).label === 'SDKs') as vscode.TreeItem | undefined;
     assert.ok(sdks);
+    const sdksIcon = sdks.iconPath as ThemeAwareIcon;
+    assert.deepStrictEqual({
+      light: sdksIcon.light.path,
+      dark: sdksIcon.dark.path,
+    }, {
+      light: '/extension/media/sdks.svg',
+      dark: '/extension/media/sdks-dark.svg',
+    });
     const sdkChildren = provider.getChildren(sdks);
     assert.strictEqual((sdkChildren[0] as vscode.TreeItem).label, 'node');
+    assert.strictEqual((sdkChildren[0] as vscode.TreeItem).iconPath, undefined);
 
     poller.dispose();
     provider.dispose();
@@ -216,6 +226,9 @@ suite('WorkshopsTreeProvider', () => {
         sdks: [
           {
             name: 'verified-sdk',
+            channel: 'latest/stable',
+            website: 'https://example.com',
+            version: '1.0.0',
             publisher: { username: 'canonical', validation: 'verified' },
           },
           {
@@ -241,9 +254,14 @@ suite('WorkshopsTreeProvider', () => {
       .find((item) => (item as vscode.TreeItem).label === 'Publisher') as vscode.TreeItem;
     const communityPublisher = provider.getChildren(communitySdk)
       .find((item) => (item as vscode.TreeItem).label === 'Publisher') as vscode.TreeItem;
+    const verifiedSdkChildren = provider.getChildren(verifiedSdk) as vscode.TreeItem[];
 
     assert.strictEqual((verifiedPublisher.iconPath as vscode.ThemeIcon).id, 'verified');
     assert.strictEqual(communityPublisher.iconPath, undefined);
+    assert.deepStrictEqual(
+      verifiedSdkChildren.slice(-2).map((item) => item.label),
+      ['Website', 'Publisher'],
+    );
 
     poller.dispose();
     provider.dispose();

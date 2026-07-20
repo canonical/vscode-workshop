@@ -253,9 +253,9 @@ export class WorkshopsTreeProvider
       case 'loading':
         return [new WorkshopInfoItem('Loading...', [], { icon: 'sync~spin' })];
       case 'error':
-        return workshopInfoErrorItems(state.message);
+        return workshopInfoErrorItems(state.message, this.extensionUri);
       case 'loaded':
-        return workshopInfoItems(state.details);
+        return workshopInfoItems(state.details, this.extensionUri);
     }
   }
 

@@ -6,8 +6,22 @@ interface WorkshopInfoItemOptions {
   description?: string;
   tooltip?: string;
   icon?: string;
+  iconPath?: vscode.IconPath;
   command?: vscode.Command;
   collapsibleState?: vscode.TreeItemCollapsibleState;
+}
+
+const DEFAULT_EXTENSION_URI = vscode.Uri.joinPath(vscode.Uri.file(__dirname), '..');
+
+function mediaIcon(extensionUri: vscode.Uri, filename: string): vscode.Uri {
+  return vscode.Uri.joinPath(extensionUri, 'media', filename);
+}
+
+function mediaIconPair(extensionUri: vscode.Uri, basename: string): { light: vscode.Uri; dark: vscode.Uri } {
+  return {
+    light: mediaIcon(extensionUri, `${basename}.svg`),
+    dark: mediaIcon(extensionUri, `${basename}-dark.svg`),
+  };
 }
 
 export class WorkshopInfoItem extends vscode.TreeItem {
@@ -28,12 +42,17 @@ export class WorkshopInfoItem extends vscode.TreeItem {
     this.tooltip = options.tooltip ?? (options.description ? `${label}: ${options.description}` : label);
     if (options.icon) {
       this.iconPath = new vscode.ThemeIcon(options.icon);
+    } else if (options.iconPath) {
+      this.iconPath = options.iconPath;
     }
     this.command = options.command;
   }
 }
 
-export function workshopInfoItems(details: WorkshopInfo): WorkshopInfoItem[] {
+export function workshopInfoItems(
+  details: WorkshopInfo,
+  extensionUri = DEFAULT_EXTENSION_URI,
+): WorkshopInfoItem[] {
   const items: WorkshopInfoItem[] = [];
 
   if (text(details.base)) {
@@ -50,34 +69,37 @@ export function workshopInfoItems(details: WorkshopInfo): WorkshopInfoItem[] {
     ));
   }
 
-  items.push(sdkGroup(details.sdks ?? []));
+  items.push(sdkGroup(details.sdks ?? [], extensionUri));
   return items;
 }
 
-export function workshopInfoErrorItems(message: string): WorkshopInfoItem[] {
+export function workshopInfoErrorItems(
+  message: string,
+  extensionUri = DEFAULT_EXTENSION_URI,
+): WorkshopInfoItem[] {
   return [
     new WorkshopInfoItem('Details unavailable', [], {
       description: message,
       tooltip: message,
       icon: 'warning',
     }),
-    sdkGroup([]),
+    sdkGroup([], extensionUri),
   ];
 }
 
-function sdkGroup(sdks: SdkInfo[]): WorkshopInfoItem {
+function sdkGroup(sdks: SdkInfo[], extensionUri: vscode.Uri): WorkshopInfoItem {
   if (sdks.length === 0) {
     return new WorkshopInfoItem('SDKs', [
       new WorkshopInfoItem('No installed SDKs', [], { icon: 'circle-slash' }),
     ], {
       description: 'none',
-      icon: 'extensions',
+      iconPath: mediaIconPair(extensionUri, 'sdks'),
       collapsibleState: vscode.TreeItemCollapsibleState.Expanded,
     });
   }
   return new WorkshopInfoItem('SDKs', sdks.map(sdkItem), {
     description: `${sdks.length} installed`,
-    icon: 'extensions',
+    iconPath: mediaIconPair(extensionUri, 'sdks'),
     collapsibleState: vscode.TreeItemCollapsibleState.Expanded,
   });
 }
@@ -88,26 +110,6 @@ function sdkItem(sdk: SdkInfo): WorkshopInfoItem {
     children.push(new WorkshopInfoItem('Channel', [], { description: channelLabel(sdk) }));
   }
 
-  const website = text(sdk.website);
-  if (website) {
-    children.push(new WorkshopInfoItem('Website', [], {
-      description: website,
-      icon: 'link-external',
-      command: {
-        command: 'vscode.open',
-        title: 'Open Website',
-        arguments: [vscode.Uri.parse(website)],
-      },
-    }));
-  }
-
-  const publisher = publisherLabel(sdk.publisher);
-  if (publisher) {
-    children.push(new WorkshopInfoItem('Publisher', [], {
-      description: publisher.label,
-      icon: publisher.verified ? 'verified' : undefined,
-    }));
-  }
   if (text(sdk.version)) {
     children.push(new WorkshopInfoItem('Version', [], { description: sdk.version }));
   }
@@ -134,9 +136,29 @@ function sdkItem(sdk: SdkInfo): WorkshopInfoItem {
     children.push(new WorkshopInfoItem('Source', [], { description: sdk.source }));
   }
 
+  const website = text(sdk.website);
+  if (website) {
+    children.push(new WorkshopInfoItem('Website', [], {
+      description: website,
+      icon: 'link-external',
+      command: {
+        command: 'vscode.open',
+        title: 'Open Website',
+        arguments: [vscode.Uri.parse(website)],
+      },
+    }));
+  }
+
+  const publisher = publisherLabel(sdk.publisher);
+  if (publisher) {
+    children.push(new WorkshopInfoItem('Publisher', [], {
+      description: publisher.label,
+      icon: publisher.verified ? 'verified' : undefined,
+    }));
+  }
+
   return new WorkshopInfoItem(sdk.name, children, {
     description: isSystemSdk(sdk) && !text(sdk.channel) ? undefined : channelLabel(sdk),
-    icon: 'package',
   });
 }
 
