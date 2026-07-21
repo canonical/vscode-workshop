@@ -6,6 +6,7 @@ sdks:
   - name: project-test-deps
 actions:
   build: |
+    npm ci
     npx @vscode/vsce package
   test: |
     npm run test
