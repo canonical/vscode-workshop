@@ -117,7 +117,7 @@
       "view/item/context": [
         {
           "command": "workshop.reopenInWorkshop",
-          "when": "view == workshop.workshops && (viewItem == workshop || viewItem == workshop-ready || (viewItem == workshop-waiting && remoteName != 'ssh-remote'))",
+          "when": "view == workshop.workshops && (viewItem == workshop || viewItem == workshop-ready || viewItem == workshop-waiting)",
           "group": "inline"
         },
         {
@@ -132,12 +132,12 @@
         },
         {
           "command": "workshop.continueRefresh",
-          "when": "view == workshop.workshops && (viewItem == workshop-active-waiting || (viewItem == workshop-waiting && remoteName != 'ssh-remote'))",
+          "when": "view == workshop.workshops && (viewItem == workshop-active-waiting || viewItem == workshop-waiting)",
           "group": "inline"
         },
         {
           "command": "workshop.abortRefresh",
-          "when": "view == workshop.workshops && (viewItem == workshop-active-waiting || (viewItem == workshop-waiting && remoteName != 'ssh-remote'))",
+          "when": "view == workshop.workshops && (viewItem == workshop-active-waiting || viewItem == workshop-waiting)",
           "group": "inline"
         },
         {
