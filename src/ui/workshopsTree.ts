@@ -20,7 +20,7 @@ type DetailState =
  * Context key toggled to drive the view's welcome content (see package.json).
  *
  * This is deliberately *positive* ("unavailable") rather than "available". VS
- * Code normalises a `key == false` welcome `when` clause into `!key`, which
+ * Code normalizes a `key == false` welcome `when` clause into `!key`, which
  * evaluates to `true` while the key is still unset — so a negative key would
  * flash the welcome stub on first paint, before our async `setContext` lands.
  * With a positive key, the default unset state means "not unavailable", keeping
@@ -48,7 +48,7 @@ function mediaIconPair(extensionUri: vscode.Uri, basename: string): ThemeAwareIc
 }
 
 /**
- * Provides a coloured label decoration for the active workshop tree item.
+ * Provides a colored label decoration for the active workshop tree item.
  * Register with {@link vscode.window.registerFileDecorationProvider}.
  */
 export class WorkshopDecorationProvider implements vscode.FileDecorationProvider {
@@ -251,11 +251,11 @@ export class WorkshopsTreeProvider
     const state = this.details.get(key);
     if (!state) {
       this.loadInfo(workshop);
-      return [new WorkshopInfoItem('Loading...', [], { icon: 'sync~spin' })];
+      return [new WorkshopInfoItem('Loading…', [], { icon: 'sync~spin' })];
     }
     switch (state.kind) {
       case 'loading':
-        return [new WorkshopInfoItem('Loading...', [], { icon: 'sync~spin' })];
+        return [new WorkshopInfoItem('Loading…', [], { icon: 'sync~spin' })];
       case 'error':
         return workshopInfoErrorItems(state.message, this.extensionUri);
       case 'loaded':
@@ -282,7 +282,7 @@ export class WorkshopsTreeProvider
           return;
         }
         const message = err instanceof Error ? err.message : String(err);
-        this.log?.warn(`Failed to load workshop info for ${workshop.name}: ${message}`);
+        this.log?.warn(`Couldn't load workshop info for ${workshop.name}: ${message}`);
         this.details.set(key, { kind: 'error', message });
         this.emitter.fire();
       });

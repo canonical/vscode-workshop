@@ -8,7 +8,7 @@ import { WorkshopClient, WorkshopsResponse } from './client';
  * - `Pending`  — a transient state while a workshop is being launched.
  * - `Waiting`  — paused mid-change, awaiting user input.
  * - `Error`    — the workshop failed.
- * - `Unknown`  — a status we don't recognise.
+ * - `Unknown`  — a status we don't recognize.
  */
 export type Status = 'On' | 'Off' | 'Pending' | 'Waiting' | 'Error' | 'Unknown';
 
@@ -93,7 +93,7 @@ export function reopenAction(workshop: Workshop): ReopenAction {
 /**
  * Merge the two halves of a `listWorkshops` response into a single, sorted
  * list. Launched workshops carry a live status; definition files that have no
- * matching live workshop are surfaced as `Off`, mirroring the old behaviour.
+ * matching live workshop are surfaced as `Off`, mirroring the old behavior.
  */
 export function mergeWorkshops(response: WorkshopsResponse, projectId: string): Workshop[] {
   const byName = new Map<string, Workshop>();

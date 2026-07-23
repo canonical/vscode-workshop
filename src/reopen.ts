@@ -66,7 +66,7 @@ export async function reopenInWorkshop(
       if (!info.hostname) {
         throw new Error(
           `"${workshop.name}" is not reachable (status: ${info.status}). ` +
-          'The workshop state may have changed — please try again.',
+          'The workshop state may have changed. Please try again.',
         );
       }
       connectedHostname = info.hostname;

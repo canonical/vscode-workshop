@@ -145,7 +145,7 @@ function sendStdin(ws: WebSocket, stdin: string | Buffer | undefined): void {
   ws.send('');
 }
 
-/** Normalise ws's possible message payloads into a single Buffer. */
+/** Normalize ws's possible message payloads into a single Buffer. */
 function toBuffer(data: WebSocket.RawData): Buffer {
   if (Buffer.isBuffer(data)) {
     return data;

@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 
 /**
  * Polls `fn()` on a fixed interval and fires {@link onDidUpdate} when the
- * result changes (compared by JSON-serialised deep equality). Fires
+ * result changes (compared by JSON-serialized deep equality). Fires
  * {@link onDidError} when `fn()` rejects.
  *
  * Polling only runs while at least one activation handle is outstanding.
