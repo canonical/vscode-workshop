@@ -82,13 +82,13 @@ export function createWorkshopCommands({
       }
     }
     if (anchored) {
-      await logsView.openLog(`${workshopName} — error`, logContent);
+      await logsView.openLog(`${workshopName} (error)`, logContent);
     } else {
       await vscode.commands.executeCommand('vscode.setEditorLayout', {
         orientation: 0,
         groups: [{}, {}],
       });
-      await logsView.openLog(`${workshopName} — error`, logContent, vscode.ViewColumn.Two);
+      await logsView.openLog(`${workshopName} (error)`, logContent, vscode.ViewColumn.Two);
     }
   }
 
@@ -113,7 +113,7 @@ export function createWorkshopCommands({
     return {
       onLog: (lines) => logLines.push(...lines),
       onPause: async (error) => {
-        log.error(`Failed to refresh ${workshop.name}: ${error}`);
+        log.error(`Couldn't refresh ${workshop.name}: ${error}`);
         await showResolvedWorkshopError(workshop, new Error(error), logLines);
         const choice = await vscode.window.showInformationMessage(
           `"${workshop.name}" refresh is paused due to a failure. Reopen for debugging, or abort the refresh?`,
@@ -201,7 +201,7 @@ export function createWorkshopCommands({
         mode,
       });
     operation.catch((err: unknown) => {
-      log.error(`Failed to ${action} ${item.workshop.name}: ${err instanceof Error ? err.message : String(err)}`);
+      log.error(`Couldn't ${action} ${item.workshop.name}: ${err instanceof Error ? err.message : String(err)}`);
       void showResolvedWorkshopError(item.workshop, err, logLines);
     });
   }
@@ -287,8 +287,8 @@ export function createWorkshopCommands({
       await runTurnOff({ name: op.workshopName, status: 'Waiting', projectId: op.projectId })
         .catch((err: unknown) => {
           const message = err instanceof Error ? err.message : String(err);
-          log.error(`Failed to turn off ${op.workshopName}: ${message}`);
-          void vscode.window.showErrorMessage(`Failed to turn off "${op.workshopName}": ${message}`);
+          log.error(`Couldn't turn off ${op.workshopName}: ${message}`);
+          void vscode.window.showErrorMessage(`Couldn't turn off "${op.workshopName}": ${message}`);
         });
       return;
     }
@@ -308,7 +308,7 @@ export function createWorkshopCommands({
       },
     ).catch((err: unknown) => {
       const action = op.mode === 'wait-on-error' ? 'refresh and reopen' : `${op.mode} refresh`;
-      log.error(`Failed to ${action} ${workshop.name}: ${err instanceof Error ? err.message : String(err)}`);
+      log.error(`Couldn't ${action} ${workshop.name}: ${err instanceof Error ? err.message : String(err)}`);
       void showResolvedWorkshopError(workshop, err, logLines);
     });
   }
@@ -321,7 +321,7 @@ export function createWorkshopCommands({
       item.workshop,
       withSession(item.workshop, callbacks),
     ).catch((err: unknown) => {
-      log.error(`Failed to reopen in workshop ${item.workshop.name}: ${err instanceof Error ? err.message : String(err)}`);
+      log.error(`Couldn't reopen in workshop ${item.workshop.name}: ${err instanceof Error ? err.message : String(err)}`);
       void showResolvedWorkshopError(item.workshop, err, logLines);
     });
   }
@@ -369,8 +369,8 @@ export function createWorkshopCommands({
     }
     await runTurnOff(workshop).catch((err: unknown) => {
       const message = err instanceof Error ? err.message : String(err);
-      log.error(`Failed to turn off ${workshop.name}: ${message}`);
-      void vscode.window.showErrorMessage(`Failed to turn off "${workshop.name}": ${message}`);
+      log.error(`Couldn't turn off ${workshop.name}: ${message}`);
+      void vscode.window.showErrorMessage(`Couldn't turn off "${workshop.name}": ${message}`);
     });
   }
 

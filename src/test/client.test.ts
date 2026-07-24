@@ -98,7 +98,7 @@ suite('WorkshopClient over a fake workshopd socket', () => {
   });
 });
 
-suite('workshopAction — refresh body serialisation', () => {
+suite('workshopAction — refresh body serialization', () => {
   let server: http.Server;
   let socketPath: string;
   let capturedBody: Record<string, unknown> | undefined;

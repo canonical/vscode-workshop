@@ -44,7 +44,7 @@ export const PENDING_OPS_KEY = 'workshop.pendingOps';
  *
  * Inside a Remote-SSH workshop window, `folder.uri` has scheme `vscode-remote`
  * and authority `ssh-remote+<hostname>`.  Returns `undefined` in a local window
- * (scheme `file`) or when the authority format is unrecognised.
+ * (scheme `file`) or when the authority format is unrecognized.
  */
 export function hostnameFromFolder(
   folder: vscode.WorkspaceFolder | undefined,

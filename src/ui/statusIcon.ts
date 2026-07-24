@@ -4,7 +4,7 @@ import { Status } from '../api/workshops';
 /**
  * Map a workshop {@link Status} to a themed icon:
  *
- * | Status  | Glyph (codicon)       | Colour          |
+ * | Status  | Glyph (codicon)       | Color           |
  * |---------|-----------------------|-----------------|
  * | On      | `pass`                | disabled fg     |
  * | Waiting | `watch`               | disabled fg     |

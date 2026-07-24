@@ -191,7 +191,7 @@ suite('WorkshopsTreeProvider', () => {
     await poller.poll();
     const workshop = provider.getChildren()[0];
     const loading = provider.getChildren(workshop);
-    assert.strictEqual((loading[0] as vscode.TreeItem).label, 'Loading...');
+    assert.strictEqual((loading[0] as vscode.TreeItem).label, 'Loading…');
     await new Promise((resolve) => setImmediate(resolve));
 
     const children = provider.getChildren(workshop);
@@ -231,7 +231,7 @@ suite('WorkshopsTreeProvider', () => {
     await poller.poll();
     const workshop = provider.getChildren()[0];
     const loading = provider.getChildren(workshop);
-    assert.strictEqual((loading[0] as vscode.TreeItem).label, 'Loading...');
+    assert.strictEqual((loading[0] as vscode.TreeItem).label, 'Loading…');
     await new Promise((resolve) => setImmediate(resolve));
 
     const children = provider.getChildren(workshop);
@@ -340,7 +340,7 @@ suite('WorkshopsTreeProvider', () => {
     web = workshops.find((item) => (item as vscode.TreeItem).label === 'web') as vscode.TreeItem;
     db = workshops.find((item) => (item as vscode.TreeItem).label === 'db') as vscode.TreeItem;
     const loading = provider.getChildren(web);
-    assert.strictEqual((loading[0] as vscode.TreeItem).label, 'Loading...');
+    assert.strictEqual((loading[0] as vscode.TreeItem).label, 'Loading…');
     dbBase = provider.getChildren(db)
       .find((item) => (item as vscode.TreeItem).label === 'Base') as vscode.TreeItem;
     assert.strictEqual(dbBase.description, 'db-1');
