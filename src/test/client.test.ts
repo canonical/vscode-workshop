@@ -315,7 +315,10 @@ suite('socket path resolution', () => {
   });
 
   test('defaultSocketPath falls back to the first candidate when none exist', () => {
-    const resolved = defaultSocketPath({ WORKSHOP_SOCKET: '/nope/missing.socket' });
+    // Real candidates (SNAP_SOCKET_PATH, DEFAULT_SOCKET_PATH) may actually
+    // exist on a machine with workshop installed, so the existence check is
+    // stubbed to simulate a machine with no daemon socket present anywhere.
+    const resolved = defaultSocketPath({ WORKSHOP_SOCKET: '/nope/missing.socket' }, () => false);
     assert.strictEqual(resolved, '/nope/missing.socket');
   });
 });

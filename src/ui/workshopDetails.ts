@@ -1,3 +1,4 @@
+import * as path from 'path';
 import * as vscode from 'vscode';
 
 import { SdkInfo, StoreAccount, WorkshopInfo } from '../api/client';
@@ -107,8 +108,9 @@ function sdkGroup(sdks: SdkInfo[], extensionUri: vscode.Uri): WorkshopInfoItem {
 
 function sdkItem(sdk: SdkInfo): WorkshopInfoItem {
   const children: WorkshopInfoItem[] = [];
-  if (!isSystemSdk(sdk)) {
-    children.push(new WorkshopInfoItem('Channel', [], { description: channelLabel(sdk) }));
+  const chanLbl = channelLabel(sdk);
+  if (!isLocalSdk(sdk) && chanLbl.length > 0) {
+    children.push(new WorkshopInfoItem('Channel', [], { description: chanLbl }));
   }
 
   if (text(sdk.version)) {
@@ -133,15 +135,24 @@ function sdkItem(sdk: SdkInfo): WorkshopInfoItem {
       icon: sdk['health-check'].code ? 'warning' : 'heart',
     }));
   }
-  if (text(sdk.source)) {
-    children.push(new WorkshopInfoItem('Source', [], { description: sdk.source }));
+  const source = text(sdk.source);
+  if (source) {
+    children.push(new WorkshopInfoItem('Source', [], {
+      description: source,
+      tooltip: `Click to reveal ${source} in the file manager`,
+      command: {
+        command: 'revealFileInOS',
+        title: 'Reveal in File Manager',
+        arguments: [vscode.Uri.file(source)],
+      },
+    }));
   }
 
   const website = text(sdk.website);
   if (website) {
     children.push(new WorkshopInfoItem('Website', [], {
       description: website,
-      icon: 'link-external',
+      tooltip: `Click to open ${website}`,
       command: {
         command: 'vscode.open',
         title: 'Open Website',
@@ -153,13 +164,12 @@ function sdkItem(sdk: SdkInfo): WorkshopInfoItem {
   const publisher = publisherLabel(sdk.publisher);
   if (publisher) {
     children.push(new WorkshopInfoItem('Publisher', [], {
-      description: publisher.label,
-      icon: publisher.verified ? 'verified' : undefined,
+      description: publisher.verified ? `${publisher.label} ✓` : publisher.label,
     }));
   }
 
   return new WorkshopInfoItem(sdk.name, children, {
-    description: isSystemSdk(sdk) && !text(sdk.channel) ? undefined : channelLabel(sdk),
+    description: isSystemSdk(sdk) && !text(sdk.channel) ? undefined : trackingLabel(sdk),
   });
 }
 
@@ -171,11 +181,48 @@ function isSystemSdk(sdk: SdkInfo): boolean {
   return sdk.name === 'system';
 }
 
+// A revision string mirrors internal/sdk.Revision.String() in the workshop
+// daemon: "unset" for the zero value, "x<n>" for a local/sideloaded build,
+// or a plain positive integer for a revision installed from the store.
+function isLocalSdk(sdk: SdkInfo): boolean {
+  return text(sdk.revision)?.startsWith('x') ?? false;
+}
+
 function channelLabel(sdk: SdkInfo): string {
   if (!text(sdk.channel) && isSystemSdk(sdk)) {
     return 'no channel';
   }
-  return text(sdk.channel) ?? 'unknown';
+  return text(sdk.channel) ?? '';
+}
+
+// Local/sideloaded SDKs aren't tracking a store channel, so label them with
+// their source kind (e.g. "Project", "Try") instead of showing a blank
+// channel.
+function trackingLabel(sdk: SdkInfo): string {
+  if (isLocalSdk(sdk)) {
+    const source = text(sdk.source);
+    return source ? sourceLabel(source) : 'local';
+  }
+  return channelLabel(sdk);
+}
+
+// The daemon sends a resolved filesystem path rather than the underlying
+// source kind (see workshop.SdkSourcePath in internal/workshop/workshop_dirs.go),
+// so the kind has to be read back out of the path shape: a try SDK lives
+// under a `try/<sdk>` directory, a project SDK under `<project>/.workshop/<sdk>`,
+// and a sketch SDK's path always ends in `current`.
+function sourceLabel(source: string): string {
+  const parent = path.basename(path.dirname(source));
+  if (path.basename(source) === 'current') {
+    return 'sketch';
+  }
+  if (parent === 'try') {
+    return 'try';
+  }
+  if (parent === '.workshop') {
+    return 'project';
+  }
+  return source;
 }
 
 function publisherLabel(
