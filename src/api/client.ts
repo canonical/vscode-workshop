@@ -194,9 +194,12 @@ export function socketPathCandidates(env: NodeJS.ProcessEnv = process.env): stri
  * entry that exists on disk, falling back to the first candidate so callers
  * still get a sensible path (and a meaningful error) when none is present.
  */
-export function defaultSocketPath(env: NodeJS.ProcessEnv = process.env): string {
+export function defaultSocketPath(
+  env: NodeJS.ProcessEnv = process.env,
+  exists: (p: string) => boolean = fs.existsSync,
+): string {
   const candidates = socketPathCandidates(env);
-  return candidates.find((p) => fs.existsSync(p)) ?? candidates[0];
+  return candidates.find(exists) ?? candidates[0];
 }
 
 export interface WorkshopClientOptions {

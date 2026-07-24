@@ -241,7 +241,7 @@ suite('WorkshopsTreeProvider', () => {
     provider.dispose();
   });
 
-  test('uses verified icon only for verified SDK publishers', async () => {
+  test('appends a checkmark only for verified SDK publishers', async () => {
     const workshops: Workshop[] = [{ name: 'web', status: 'On', projectId: 'proj-1' }];
     const poller = new WorkshopPoller<Workshop[]>(() => Promise.resolve(workshops), 50_000);
     const provider = new WorkshopsTreeProvider(poller, {
@@ -282,8 +282,8 @@ suite('WorkshopsTreeProvider', () => {
       .find((item) => (item as vscode.TreeItem).label === 'Publisher') as vscode.TreeItem;
     const verifiedSdkChildren = provider.getChildren(verifiedSdk) as vscode.TreeItem[];
 
-    assert.strictEqual((verifiedPublisher.iconPath as vscode.ThemeIcon).id, 'verified');
-    assert.strictEqual(communityPublisher.iconPath, undefined);
+    assert.strictEqual(verifiedPublisher.description, 'canonical ✓');
+    assert.strictEqual(communityPublisher.description, 'community');
     assert.deepStrictEqual(
       verifiedSdkChildren.slice(-2).map((item) => item.label),
       ['Website', 'Publisher'],
