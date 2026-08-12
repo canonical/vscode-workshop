@@ -51,7 +51,7 @@ export function isWorkshopVersionCompatible(
  * Fetch the daemon version via `GET /v1/system-info`.
  *
  * - Returns the version string on success.
- * - Returns `undefined` when the endpoint is absent (pre-0.9.5 daemon) — logged at debug.
+ * - Throws {@link WorkshopIncompatibleError} when the endpoint is absent (pre-0.9.5 daemon) — logged at debug.
  * - Returns `undefined` for other unexpected API errors — logged at warn.
  * - Re-throws `WorkshopUnavailableError` so callers surface daemon unavailability normally.
  */
