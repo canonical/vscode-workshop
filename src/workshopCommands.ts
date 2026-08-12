@@ -343,6 +343,15 @@ export function createWorkshopCommands({
 
   async function turnOff(item: WorkshopItem): Promise<void> {
     const workshop = item.workshop;
+    const confirmed = await vscode.window.showWarningMessage(
+      `Turn off "${workshop.name}"? `,
+      { modal: true, detail: 'This will remove the workshop container and any data stored in the default bind mounts.' },
+      'Turn Off',
+    );
+    if (confirmed !== 'Turn Off') {
+      return;
+    }
+
     const current = currentWorkshop(globalState);
     const turningOffCurrent = current?.session?.projectId === workshop.projectId
       && current.session.workshopName === workshop.name;

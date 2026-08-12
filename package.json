@@ -94,7 +94,7 @@
       },
       {
         "command": "workshop.turnOff",
-        "title": "Turn Off",
+        "title": "Turn Off…",
         "category": "Workshop",
         "icon": "$(circle-slash)"
       }
@@ -122,7 +122,7 @@
         },
         {
           "command": "workshop.openDefinition",
-          "when": "view == workshop.workshops && viewItem =~ /^workshop/",
+          "when": "view == workshop.workshops && viewItem =~ /^workshop/ && viewItem != workshop-pending",
           "group": "inline"
         },
         {
