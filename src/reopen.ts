@@ -7,7 +7,6 @@ import {
   WorkshopClient,
 } from './api/client';
 import { Workshop, reopenAction } from './api/workshops';
-import { ensureDaemonSshInclude } from './remote/ssh';
 
 const ACTION_POLL_MS = 200;
 
@@ -70,8 +69,6 @@ export async function reopenInWorkshop(
         );
       }
       connectedHostname = info.hostname;
-
-      ensureDaemonSshInclude(client.socket);
 
       progress.report({ message: 'Opening…' });
       const uri = vscode.Uri.parse(`vscode-remote://ssh-remote+${connectedHostname}/project`);

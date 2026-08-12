@@ -4,7 +4,11 @@ import * as vscode from 'vscode';
 import { WorkshopInfo, WorkshopUnavailableError } from '../api/client';
 import { WorkshopPoller } from '../poller';
 import { Workshop } from '../api/workshops';
-import { UNAVAILABLE_CONTEXT, WorkshopsTreeProvider } from '../ui/workshopsTree';
+import { WorkshopIncompatibleError } from '../version';
+import {
+  VIEW_STATE_CONTEXT,
+  WorkshopsTreeProvider,
+} from '../ui/workshopsTree';
 
 const fakeDetailsClient = {
   getWorkshop: async (projectId: string, name: string): Promise<WorkshopInfo> => ({
@@ -20,15 +24,15 @@ type MutableCommands = { executeCommand: ExecuteCommand };
 type ThemeAwareIcon = { light: vscode.Uri; dark: vscode.Uri };
 
 /**
- * Intercepts setContext calls for UNAVAILABLE_CONTEXT, runs body,
- * restores the original, then returns every value that was set.
+ * Intercepts setContext calls for `context`, runs body, restores the original,
+ * then returns every value that was set.
  */
-async function captureUnavailable(body: () => Promise<void>): Promise<boolean[]> {
+async function captureContext(context: string, body: () => Promise<void>): Promise<string[]> {
   const original = vscode.commands.executeCommand;
-  const captured: boolean[] = [];
+  const captured: string[] = [];
   (vscode.commands as MutableCommands).executeCommand = ((command: string, ...args: unknown[]) => {
-    if (command === 'setContext' && args[0] === UNAVAILABLE_CONTEXT) {
-      captured.push(args[1] as boolean);
+    if (command === 'setContext' && args[0] === context) {
+      captured.push(args[1] as string);
       return Promise.resolve(undefined);
     }
     return original(command, ...(args as []));
@@ -40,6 +44,14 @@ async function captureUnavailable(body: () => Promise<void>): Promise<boolean[]>
     (vscode.commands as MutableCommands).executeCommand = original;
   }
   return captured;
+}
+
+/**
+ * Intercepts setContext calls for VIEW_STATE_CONTEXT, runs body,
+ * restores the original, then returns every value that was set.
+ */
+async function captureViewState(body: () => Promise<void>): Promise<string[]> {
+  return captureContext(VIEW_STATE_CONTEXT, body);
 }
 
 suite('WorkshopsTreeProvider', () => {
@@ -106,18 +118,18 @@ suite('WorkshopsTreeProvider', () => {
     provider.dispose();
   });
 
-  test('sets workshop.unavailable=true and shows no items when daemon is unreachable', async () => {
+  test('sets workshop.viewState=unavailable and shows no items when daemon is unreachable', async () => {
     const err = new WorkshopUnavailableError('socket missing', 'ENOENT');
     const poller = new WorkshopPoller<Workshop[]>(() => Promise.reject(err), 50_000);
     const provider = new WorkshopsTreeProvider(poller, fakeDetailsClient);
 
     let items: vscode.TreeItem[] = [];
-    const captured = await captureUnavailable(async () => {
+    const captured = await captureViewState(async () => {
       await poller.poll();
       items = provider.getChildren();
     });
 
-    assert.deepStrictEqual(captured, [true]);
+    assert.deepStrictEqual(captured, ['unavailable']);
     assert.deepStrictEqual(items, []);
 
     poller.dispose();
@@ -136,13 +148,13 @@ suite('WorkshopsTreeProvider', () => {
     );
     const provider = new WorkshopsTreeProvider(poller, fakeDetailsClient);
 
-    const captured = await captureUnavailable(async () => {
+    const captured = await captureViewState(async () => {
       await poller.poll();
       shouldFail = false;
       await poller.poll();
     });
 
-    assert.deepStrictEqual(captured, [true, false]);
+    assert.deepStrictEqual(captured, ['unavailable', 'ready']);
     assert.strictEqual(provider.getChildren().length, 1);
 
     poller.dispose();
@@ -153,12 +165,71 @@ suite('WorkshopsTreeProvider', () => {
     const poller = new WorkshopPoller<Workshop[]>(() => Promise.resolve([]), 50_000);
     const provider = new WorkshopsTreeProvider(poller, fakeDetailsClient);
 
-    const captured = await captureUnavailable(async () => {
+    const captured = await captureViewState(async () => {
       await poller.poll();
     });
 
-    assert.deepStrictEqual(captured, [false]);
+    assert.deepStrictEqual(captured, ['ready']);
     assert.deepStrictEqual(provider.getChildren(), []);
+
+    poller.dispose();
+    provider.dispose();
+  });
+
+  test('sets workshop.viewState=incompatible when the version is too old', async () => {
+    const err = new WorkshopIncompatibleError('0.9.4');
+    const poller = new WorkshopPoller<Workshop[]>(() => Promise.reject(err), 50_000);
+    const provider = new WorkshopsTreeProvider(poller, fakeDetailsClient);
+
+    let items: vscode.TreeItem[] = [];
+    const captured = await captureViewState(async () => {
+      await poller.poll();
+      items = provider.getChildren();
+    });
+
+    assert.deepStrictEqual(captured, ['incompatible']);
+    assert.deepStrictEqual(items, []);
+
+    poller.dispose();
+    provider.dispose();
+  });
+
+  test('transitions from incompatible to unavailable when error type changes', async () => {
+    let error: Error = new WorkshopIncompatibleError('0.9.4');
+    const poller = new WorkshopPoller<Workshop[]>(() => Promise.reject(error), 50_000);
+    const provider = new WorkshopsTreeProvider(poller, fakeDetailsClient);
+
+    const captured = await captureViewState(async () => {
+      await poller.poll();
+      error = new WorkshopUnavailableError('socket gone');
+      await poller.poll();
+    });
+
+    assert.deepStrictEqual(captured, ['incompatible', 'unavailable']);
+
+    poller.dispose();
+    provider.dispose();
+  });
+
+  test('clears workshop.viewState after a successful update following a compatibility error', async () => {
+    let shouldFail = true;
+    const poller = new WorkshopPoller<Workshop[]>(
+      () =>
+        shouldFail
+          ? Promise.reject(new WorkshopIncompatibleError('0.9.4'))
+          : Promise.resolve([{ name: 'web', status: 'On', projectId: 'proj-1' }]),
+      50_000,
+    );
+    const provider = new WorkshopsTreeProvider(poller, fakeDetailsClient);
+
+    const captured = await captureViewState(async () => {
+      await poller.poll();
+      shouldFail = false;
+      await poller.poll();
+    });
+
+    assert.deepStrictEqual(captured, ['incompatible', 'ready']);
+    assert.strictEqual(provider.getChildren().length, 1);
 
     poller.dispose();
     provider.dispose();

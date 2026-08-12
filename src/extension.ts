@@ -3,10 +3,11 @@ import * as vscode from 'vscode';
 import { WorkshopClient } from './api/client';
 import { listProjectWorkshops, Workshop } from './api/workshops';
 import { WorkshopPoller } from './poller';
+import { assertWorkshopVersionCompatible } from './version';
 import { createDefinitionWatcher } from './ui/definitionWatcher';
 import { LogsView } from './ui/logsView';
 import {
-  UNAVAILABLE_CONTEXT,
+  VIEW_STATE_CONTEXT,
   WorkshopsTreeProvider,
   WorkshopItem,
 } from './ui/workshopsTree';
@@ -22,12 +23,13 @@ export function activate(context: vscode.ExtensionContext): void {
   const client = new WorkshopClient();
   log.info(`Workshop extension activated; using daemon socket ${client.socket}`);
 
-  void vscode.commands.executeCommand('setContext', UNAVAILABLE_CONTEXT, false);
+  void vscode.commands.executeCommand('setContext', VIEW_STATE_CONTEXT, 'ready');
 
   const logsView = new LogsView();
   logsView.register(context);
 
   const poller = new WorkshopPoller<Workshop[]>(async () => {
+    await assertWorkshopVersionCompatible(client, log);
     const projectId = await resolveCurrentProjectId(client, context.globalState);
     return projectId ? listProjectWorkshops(client, projectId) : [];
   });
