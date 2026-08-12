@@ -229,6 +229,12 @@ export class WorkshopClient {
     return this.socketPath;
   }
 
+  /** Fetch the daemon version from `/v1/system-info`. */
+  async systemInfo(): Promise<{ version: string }> {
+    const result = await this.request('GET', '/v1/system-info');
+    return result as { version: string };
+  }
+
   /** List every project the daemon currently knows about. */
   async projects(): Promise<Project[]> {
     const result = await this.request('GET', '/v1/projects');
