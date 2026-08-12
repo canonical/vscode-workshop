@@ -102,8 +102,13 @@
     "viewsWelcome": [
       {
         "view": "workshop.workshops",
-        "when": "workshop.unavailable",
+        "when": "workshop.viewState == 'unavailable'",
         "contents": "Workshop doesn't appear to be installed or running.\n\nWorkshop is distributed as a snap. Install it, then reload:\n[Install Workshop](command:workshop.install)\n[Reload](command:workshop.poll)\n\nOr from a terminal:\n`snap install workshop --classic`"
+      },
+      {
+        "view": "workshop.workshops",
+        "when": "workshop.viewState == 'incompatible'",
+        "contents": "Your installed Workshop is too old for this extension.\n\nUpgrade to the latest version, then reload:\n[Reload](command:workshop.poll)"
       }
     ],
     "menus": {

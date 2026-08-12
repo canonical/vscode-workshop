@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { WorkshopClient, WorkshopInfo, WorkshopUnavailableError } from '../api/client';
 import { WorkshopPoller } from '../poller';
+import { WorkshopIncompatibleError } from '../version';
 import { statusIcon } from './statusIcon';
 import { Workshop } from '../api/workshops';
 import {
@@ -17,16 +18,18 @@ type DetailState =
   | { kind: 'error'; message: string };
 
 /**
- * Context key toggled to drive the view's welcome content (see package.json).
+ * Context key set to a {@link ViewState} string to drive the view's welcome content
+ * (see package.json).
  *
- * This is deliberately *positive* ("unavailable") rather than "available". VS
- * Code normalizes a `key == false` welcome `when` clause into `!key`, which
+ * This is deliberately a positive-valued key rather than a boolean "available".
+ * VS Code normalizes a `key == false` welcome `when` clause into `!key`, which
  * evaluates to `true` while the key is still unset — so a negative key would
  * flash the welcome stub on first paint, before our async `setContext` lands.
- * With a positive key, the default unset state means "not unavailable", keeping
- * the welcome hidden until the daemon is *confirmed* unreachable.
+ * With a string key, the unset (or empty) state matches no welcome entry.
  */
-export const UNAVAILABLE_CONTEXT = 'workshop.unavailable';
+export const VIEW_STATE_CONTEXT = 'workshop.viewState';
+
+export type ViewState = 'ready' | 'unavailable' | 'incompatible';
 
 /** URI scheme used to key file decorations for workshop tree items. */
 const WORKSHOP_ITEM_SCHEME = 'workshop-item';
@@ -156,7 +159,7 @@ export class WorkshopsTreeProvider
 
   private cachedItems: Workshop[] = [];
   private readonly details = new Map<string, DetailState>();
-  private isUnavailable = false;
+  private viewState: ViewState = 'ready';
   private activeWorkshopName: string | undefined;
   private requestId = 0;
   private readonly subscriptions: vscode.Disposable[] = [];
@@ -173,8 +176,8 @@ export class WorkshopsTreeProvider
       poller.onDidUpdate((workshops) => {
         this.pruneDetails(workshops);
         this.cachedItems = workshops;
-        this.isUnavailable = false;
-        void this.setUnavailable(false);
+        this.viewState = 'ready';
+        void this.setViewState('ready');
         this.log?.debug(`Updated ${workshops.length} workshop(s) from poller`);
         // Re-apply decoration in case the active workshop's status changed.
         const active = workshops.find((w) => w.name === this.activeWorkshopName);
@@ -183,8 +186,9 @@ export class WorkshopsTreeProvider
       }),
       poller.onDidError((err) => {
         if (err instanceof WorkshopUnavailableError) {
-          this.isUnavailable = true;
-          void this.setUnavailable(true);
+          const state: ViewState = err instanceof WorkshopIncompatibleError ? 'incompatible' : 'unavailable';
+          this.viewState = state;
+          void this.setViewState(state);
           this.log?.warn(
             `Workshop daemon unavailable (${err.code ?? 'no code'}): ${err.message}. ` +
               'Showing the welcome view.',
@@ -214,7 +218,7 @@ export class WorkshopsTreeProvider
     if (element) {
       return [];
     }
-    if (this.isUnavailable) {
+    if (this.viewState !== 'ready') {
       return [];
     }
     return this.cachedItems.map((w) => {
@@ -324,8 +328,8 @@ export class WorkshopsTreeProvider
     this.emitter.fire();
   }
 
-  private setUnavailable(unavailable: boolean): Thenable<unknown> {
-    return vscode.commands.executeCommand('setContext', UNAVAILABLE_CONTEXT, unavailable);
+  private setViewState(state: ViewState): Thenable<unknown> {
+    return vscode.commands.executeCommand('setContext', VIEW_STATE_CONTEXT, state);
   }
 
   dispose(): void {
