@@ -52,8 +52,8 @@ async function captureCommands(
 }
 
 /**
- * Build a minimal fake workshopd that handles the exec + wait endpoints used
- * by `ensureSshAccess`, plus optional `start`/`launch` action + wait.
+ * Build a minimal fake workshopd that resolves a project and single-workshop
+ * info, plus optional `start`/`launch` action + change wait.
  */
 function startFakeDaemon(
   socketPath: string,
