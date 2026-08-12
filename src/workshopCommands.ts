@@ -21,6 +21,7 @@ import {
 import { LogsView } from './ui/logsView';
 import { createOpenPrompt } from './ui/openPrompt';
 import { WorkshopItem } from './ui/workshopsTree';
+import { assertWorkshopVersionCompatible } from './version';
 import {
   currentWorkshop,
   isWorkshopWindow,
@@ -138,7 +139,8 @@ export function createWorkshopCommands({
     }
     const localPath = folder.uri.fsPath;
 
-    void client.ensureProject(localPath)
+    void assertWorkshopVersionCompatible(client, log)
+      .then(() => client.ensureProject(localPath))
       .then(async (project) => {
         const pendingOp = readPendingOp(globalState, project.id);
         if (pendingOp) {
