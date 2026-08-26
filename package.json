@@ -158,7 +158,19 @@
           "group": "remote_10_ssh-remote_workshop"
         }
       ]
-    }
+    },
+    "colors": [
+      {
+        "id": "workshop.waitingForeground",
+        "description": "Color for workshops in Waiting status — matches the waiting icon stroke.",
+        "defaults": {
+          "dark": "#E95420",
+          "light": "#E95420",
+          "highContrast": "#E95420",
+          "highContrastLight": "#E95420"
+        }
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run package",

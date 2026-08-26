@@ -50,37 +50,47 @@ function mediaIconPair(extensionUri: vscode.Uri, basename: string): ThemeAwareIc
   };
 }
 
+function workshopColor(status: Workshop['status'], active: boolean): vscode.ThemeColor | undefined {
+  if (active) {
+    return new vscode.ThemeColor(status === 'Waiting' ? 'workshop.waitingForeground' : 'charts.green');
+  }
+  if (status === 'Waiting') { return new vscode.ThemeColor('workshop.waitingForeground'); }
+  if (status === 'Off') { return new vscode.ThemeColor('disabledForeground'); }
+  return undefined;
+}
+
 /**
- * Provides a colored label decoration for the active workshop tree item.
+ * Provides colored label decorations for workshop tree items.
  * Register with {@link vscode.window.registerFileDecorationProvider}.
  */
 export class WorkshopDecorationProvider implements vscode.FileDecorationProvider {
   private readonly emitter = new vscode.EventEmitter<vscode.Uri[]>();
   readonly onDidChangeFileDecorations = this.emitter.event;
-  private activeUri: vscode.Uri | undefined;
-  private activeColor: vscode.ThemeColor | undefined;
+  private colors = new Map<string, vscode.ThemeColor>();
 
-  setActive(workshop: Workshop | undefined): void {
-    const previous = this.activeUri;
-    if (workshop) {
-      this.activeUri = vscode.Uri.from({ scheme: WORKSHOP_ITEM_SCHEME, path: `/${workshop.name}` });
-      this.activeColor = workshop.status === 'Waiting'
-        ? new vscode.ThemeColor('charts.yellow')
-        : new vscode.ThemeColor('charts.green');
-    } else {
-      this.activeUri = undefined;
-      this.activeColor = undefined;
+  update(workshops: Workshop[], activeName: string | undefined): void {
+    const previous = this.colors;
+    const next = new Map<string, vscode.ThemeColor>();
+
+    for (const workshop of workshops) {
+      const color = workshopColor(workshop.status, workshop.name === activeName);
+      if (color) {
+        const uri = vscode.Uri.from({ scheme: WORKSHOP_ITEM_SCHEME, path: `/${workshop.name}` });
+        next.set(uri.toString(), color);
+      }
     }
-    const toFire = [previous, this.activeUri].filter((u): u is vscode.Uri => u !== undefined);
+
+    this.colors = next;
+
+    const allUriStrings = new Set([...previous.keys(), ...next.keys()]);
+    const toFire = [...allUriStrings].map((s) => vscode.Uri.parse(s));
     if (toFire.length > 0) { this.emitter.fire(toFire); }
   }
 
   provideFileDecoration(uri: vscode.Uri): vscode.FileDecoration | undefined {
     if (uri.scheme !== WORKSHOP_ITEM_SCHEME) { return undefined; }
-    if (this.activeUri && uri.toString() === this.activeUri.toString()) {
-      return new vscode.FileDecoration(undefined, undefined, this.activeColor);
-    }
-    return undefined;
+    const color = this.colors.get(uri.toString());
+    return color ? new vscode.FileDecoration(undefined, undefined, color) : undefined;
   }
 }
 
@@ -91,7 +101,12 @@ function workshopIcon(
   extensionUri: vscode.Uri,
 ): WorkshopTreeIcon {
   if (active) {
-    return mediaIconPair(extensionUri, 'workshop-active');
+    if (status === 'On') {
+      return mediaIconPair(extensionUri, 'workshop-active');
+    }
+    if (status === 'Waiting') {
+      return mediaIconPair(extensionUri, 'workshop-waiting');
+    }
   }
   if (status === 'On') {
     return mediaIconPair(extensionUri, 'workshop-ready');
@@ -179,9 +194,7 @@ export class WorkshopsTreeProvider
         this.viewState = 'ready';
         void this.setViewState('ready');
         this.log?.debug(`Updated ${workshops.length} workshop(s) from poller`);
-        // Re-apply decoration in case the active workshop's status changed.
-        const active = workshops.find((w) => w.name === this.activeWorkshopName);
-        if (active) { this.decorationProvider.setActive(active); }
+        this.decorationProvider.update(workshops, this.activeWorkshopName);
         this.emitter.fire();
       }),
       poller.onDidError((err) => {
@@ -323,8 +336,7 @@ export class WorkshopsTreeProvider
   /** Update which workshop the current window is connected to. */
   setActiveWorkshop(name: string | undefined): void {
     this.activeWorkshopName = name;
-    const active = name ? this.cachedItems.find((w) => w.name === name) : undefined;
-    this.decorationProvider.setActive(active);
+    this.decorationProvider.update(this.cachedItems, name);
     this.emitter.fire();
   }
 
