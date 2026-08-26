@@ -7,6 +7,7 @@ import { Workshop } from '../api/workshops';
 import { WorkshopIncompatibleError } from '../version';
 import {
   VIEW_STATE_CONTEXT,
+  WorkshopDecorationProvider,
   WorkshopsTreeProvider,
 } from '../ui/workshopsTree';
 
@@ -80,13 +81,14 @@ suite('WorkshopsTreeProvider', () => {
       { name: 'api', status: 'On', projectId: 'proj-1' },
       { name: 'db', status: 'Off', projectId: 'proj-1' },
       { name: 'cache', status: 'Waiting', projectId: 'proj-1' },
+      { name: 'paused', status: 'Waiting', projectId: 'proj-1' },
     ];
     const poller = new WorkshopPoller<Workshop[]>(() => Promise.resolve(workshops), 50_000);
     const extensionUri = vscode.Uri.file('/extension');
     const provider = new WorkshopsTreeProvider(poller, fakeDetailsClient, undefined, extensionUri);
 
     await poller.poll();
-    provider.setActiveWorkshop('web');
+    provider.setActiveWorkshop('paused');
 
     const items = provider.getChildren() as vscode.TreeItem[];
     const icons = new Map(items.map((item) => {
@@ -98,8 +100,8 @@ suite('WorkshopsTreeProvider', () => {
     }));
 
     assert.deepStrictEqual(icons.get('web'), {
-      light: '/extension/media/workshop-active.svg',
-      dark: '/extension/media/workshop-active-dark.svg',
+      light: '/extension/media/workshop-ready.svg',
+      dark: '/extension/media/workshop-ready-dark.svg',
     });
     assert.deepStrictEqual(icons.get('api'), {
       light: '/extension/media/workshop-ready.svg',
@@ -112,6 +114,20 @@ suite('WorkshopsTreeProvider', () => {
     assert.deepStrictEqual(icons.get('cache'), {
       light: '/extension/media/workshop-waiting.svg',
       dark: '/extension/media/workshop-waiting-dark.svg',
+    });
+    // active + Waiting must use the waiting icon, not the active icon
+    assert.deepStrictEqual(icons.get('paused'), {
+      light: '/extension/media/workshop-waiting.svg',
+      dark: '/extension/media/workshop-waiting-dark.svg',
+    });
+
+    // active + On uses the active icon
+    provider.setActiveWorkshop('web');
+    const itemsAfter = provider.getChildren() as vscode.TreeItem[];
+    const webIcon = itemsAfter.find((i) => i.label === 'web')!.iconPath as ThemeAwareIcon;
+    assert.deepStrictEqual({ light: webIcon.light.path, dark: webIcon.dark.path }, {
+      light: '/extension/media/workshop-active.svg',
+      dark: '/extension/media/workshop-active-dark.svg',
     });
 
     poller.dispose();
@@ -446,5 +462,58 @@ suite('WorkshopsTreeProvider', () => {
 
     poller.dispose();
     provider.dispose();
+  });
+});
+
+suite('WorkshopDecorationProvider', () => {
+  function uri(name: string): vscode.Uri {
+    return vscode.Uri.from({ scheme: 'workshop-item', path: `/${name}` });
+  }
+
+  function colorId(decoration: vscode.FileDecoration | undefined): string | undefined {
+    return (decoration?.color as vscode.ThemeColor | undefined)?.id;
+  }
+
+  test('inactive On workshop has no decoration', () => {
+    const provider = new WorkshopDecorationProvider();
+    provider.update([{ name: 'web', status: 'On', projectId: 'p' }], undefined);
+    assert.strictEqual(provider.provideFileDecoration(uri('web')), undefined);
+  });
+
+  test('inactive Off workshop is decorated with disabledForeground', () => {
+    const provider = new WorkshopDecorationProvider();
+    provider.update([{ name: 'web', status: 'Off', projectId: 'p' }], undefined);
+    assert.strictEqual(colorId(provider.provideFileDecoration(uri('web'))), 'disabledForeground');
+  });
+
+  test('inactive Waiting workshop is decorated with workshop.waitingForeground', () => {
+    const provider = new WorkshopDecorationProvider();
+    provider.update([{ name: 'web', status: 'Waiting', projectId: 'p' }], undefined);
+    assert.strictEqual(colorId(provider.provideFileDecoration(uri('web'))), 'workshop.waitingForeground');
+  });
+
+  test('active Waiting workshop is decorated with workshop.waitingForeground', () => {
+    const provider = new WorkshopDecorationProvider();
+    provider.update([{ name: 'web', status: 'Waiting', projectId: 'p' }], 'web');
+    assert.strictEqual(colorId(provider.provideFileDecoration(uri('web'))), 'workshop.waitingForeground');
+  });
+
+  test('unrelated URI scheme returns undefined', () => {
+    const provider = new WorkshopDecorationProvider();
+    provider.update([{ name: 'web', status: 'On', projectId: 'p' }], 'web');
+    assert.strictEqual(provider.provideFileDecoration(vscode.Uri.file('/some/file')), undefined);
+  });
+
+  test('fires change events for newly decorated and cleared URIs', () => {
+    const provider = new WorkshopDecorationProvider();
+    const fired: string[] = [];
+    provider.onDidChangeFileDecorations((uris) => fired.push(...uris.map((u) => u.path)));
+
+    provider.update([{ name: 'web', status: 'Off', projectId: 'p' }], undefined);
+    assert.ok(fired.includes('/web'), 'should fire for newly decorated URI');
+
+    fired.length = 0;
+    provider.update([{ name: 'web', status: 'On', projectId: 'p' }], undefined);
+    assert.ok(fired.includes('/web'), 'should fire when decoration is removed');
   });
 });
