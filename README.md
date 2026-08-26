@@ -9,7 +9,7 @@ Open a [Workshop](https://snapcraft.io/workshop) project in a container from VS 
 
 ## Install locally
 
-The extension is not on the Marketplace yet. Build and install a local `.vsix`:
+Build and install a local `.vsix`:
 
 ```bash
 workshop launch
