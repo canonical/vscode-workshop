@@ -3,7 +3,24 @@
   "displayName": "Workshop",
   "description": "Use workshops as a development environment in VS Code",
   "publisher": "canonical",
-  "version": "0.1.0",
+  "version": "0.5.0",
+  "license": "MIT",
+  "homepage": "https://github.com/canonical/vscode-workshop",
+  "bugs": {
+    "url": "https://github.com/canonical/vscode-workshop/issues"
+  },
+  "keywords": [
+    "workshop",
+    "devenv",
+    "ubuntu",
+    "container",
+    "lxd"
+  ],
+  "galleryBanner": {
+    "color": "#E95420",
+    "theme": "dark"
+  },
+  "icon": "media/icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/canonical/vscode-workshop.git"
