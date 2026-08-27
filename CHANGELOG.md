@@ -4,6 +4,10 @@ All notable changes to the "workshop" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
-## [Unreleased]
+## [0.5.0] - 27-08-2026
 
-- Initial release
+### Added
+
+- Support `workshop launch` and `workshop refresh` workflows
+- Support `--wait-on-error` mode for debugging refresh errors
+- Show workshop info in the tree view

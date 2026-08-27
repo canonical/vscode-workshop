@@ -6,8 +6,11 @@ node_modules/**
 old/**
 .github/**
 .workshop/**
+.workshop.lock
+readme.md
 src/**
 .gitignore
+.eslintrc.js
 .yarnrc
 esbuild.js
 vsc-extension-quickstart.md
