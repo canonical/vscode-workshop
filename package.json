@@ -126,7 +126,7 @@
       {
         "view": "workshop.workshops",
         "when": "workshop.viewState == 'empty' && workspaceFolderCount > 0",
-        "contents": "No workshops found for this project.\n\nInitialise one from a terminal in your project directory:\n`workshop init dev --sdks opencode,go/1.26/stable`\n\nAdjust the SDK list to match your stack — see [Reference SDKs](https://github.com/canonical/reference-sdks) for the full catalogue.\n[Reload](command:workshop.poll)"
+        "contents": "No workshops found for this project.\n\nCreate one to start developing in an isolated environment:\n[Add New Workshop](command:workshop.addWorkshop)"
       },
       {
         "view": "workshop.workshops",
