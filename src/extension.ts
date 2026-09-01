@@ -85,6 +85,10 @@ export function activate(context: vscode.ExtensionContext): void {
       workshopCommands.definitionChanged(filePath, poller.lastValue);
     }),
     vscode.commands.registerCommand('workshop.poll', () => void poller.poll()),
+    vscode.commands.registerCommand(
+      'workshop.addWorkshop',
+      () => workshopCommands.addWorkshop(),
+    ),
     vscode.commands.registerCommand('workshop.install', () =>
       vscode.env.openExternal(vscode.Uri.parse('https://snapcraft.io/workshop')),
     ),
