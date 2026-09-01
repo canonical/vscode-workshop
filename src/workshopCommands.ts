@@ -53,9 +53,6 @@ export interface WorkshopCommands {
   addWorkshop(): Promise<void>;
 }
 
-export const REOPEN_BUTTON = 'Reopen in Workshop';
-export const NOT_NOW_BUTTON = 'Not Now';
-
 interface WorkshopCommandDependencies {
   client: WorkshopClient;
   globalState: vscode.Memento;
@@ -498,10 +495,10 @@ export function createWorkshopCommands({
 
     const choice = await vscode.window.showInformationMessage(
       `Created ${name}. Reopen this folder in the workshop?`,
-      REOPEN_BUTTON,
-      NOT_NOW_BUTTON,
+      'Reopen in Workshop',
+      'Not Now',
     );
-    if (choice !== REOPEN_BUTTON) {
+    if (choice !== 'Reopen in Workshop') {
       return;
     }
     await reopenNewWorkshop(folder.path, name, target).catch((err: unknown) => {

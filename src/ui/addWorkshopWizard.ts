@@ -33,8 +33,6 @@ export interface WizardDeps {
   openExternal?: (url: string) => Thenable<boolean>;
 }
 
-export const NO_COMMON_BASE_MESSAGE =
-  'The selected SDKs have no base in common. Go back and change the selection.';
 export const INVALID_NAME_LABEL = 'Invalid workshop name';
 
 // ---------------------------------------------------------------------------
@@ -90,7 +88,7 @@ export function sdkPickItems(): SdkPickItem[] {
 }
 
 /** Base rows, newest first, with the preferred base marked `(default)`. */
-export function basePickItems(bases: string[]): BasePickItem[] {
+export function basePickItems(bases: readonly string[]): BasePickItem[] {
   const preferred = preferredBase(bases);
   return bases.map((base) => ({
     label: base,
@@ -279,14 +277,13 @@ export async function runAddWorkshopWizard(deps: WizardDeps): Promise<WizardResu
   const baseFrame: Frame = {
     id: 'base',
     run: async (showBack) => {
-      const items = basePickItems([...SUPPORTED_BASES]);
-      const previous = items.find((item) => item.base === state.base);
-      const preferred = items.find((item) => item.base === preferredBase(SUPPORTED_BASES));
+      const items = basePickItems(SUPPORTED_BASES);
+      const active = items.find((item) => item.base === (state.base ?? preferredBase(SUPPORTED_BASES)));
       const [picked] = await showPick({
         title: 'Select a base',
         placeholder: 'Select an Ubuntu base for the workshop',
         items,
-        activeItems: previous ? [previous] : preferred ? [preferred] : undefined,
+        activeItems: active ? [active] : undefined,
         showBack,
       });
       if (!picked?.base) {

@@ -8,7 +8,7 @@ import { WorkshopClient } from '../api/client';
 import { InitError, InitSpec } from '../api/init';
 import { LogsView } from '../ui/logsView';
 import { WizardDeps, WizardResult } from '../ui/addWorkshopWizard';
-import { createWorkshopCommands, NOT_NOW_BUTTON } from '../workshopCommands';
+import { createWorkshopCommands } from '../workshopCommands';
 
 class MemoryMemento implements vscode.Memento {
   private store = new Map<string, unknown>();
@@ -25,7 +25,7 @@ interface Messages { warnings: string[]; errors: string[]; infos: string[] }
 /** Intercept notifications and `executeCommand` for the duration of `body`. */
 async function capture(
   body: () => Promise<void>,
-  infoAnswer: string | undefined = NOT_NOW_BUTTON,
+  infoAnswer: string | undefined = 'Not Now',
 ): Promise<Messages & { commands: string[] }> {
   const window = vscode.window as unknown as Record<string, unknown>;
   const commands = vscode.commands as unknown as Record<string, unknown>;
