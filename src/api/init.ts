@@ -27,11 +27,9 @@ export interface InitSpec {
 export interface InitRunnerOptions {
   /** The `workshop` executable; defaults to `workshop` resolved via PATH. */
   executable?: string;
-  timeoutMs?: number;
 }
 
 export const DEFAULT_WORKSHOP_EXECUTABLE = 'workshop';
-const DEFAULT_TIMEOUT_MS = 30_000;
 
 export const WORKSHOP_NOT_FOUND_REASON =
   'workshop command not found (is the Workshop snap installed?)';
@@ -96,7 +94,7 @@ export function runWorkshopInit(
     execFile(
       executable,
       args,
-      { cwd: spec.folder, timeout: options.timeoutMs ?? DEFAULT_TIMEOUT_MS },
+      { cwd: spec.folder },
       (err, stdout, stderr) => {
         if (!err) {
           resolve({ stdout, stderr });
@@ -105,10 +103,6 @@ export function runWorkshopInit(
         const spawnError = err as NodeJS.ErrnoException & { code?: number | string; killed?: boolean };
         if (spawnError.code === 'ENOENT') {
           reject(new InitError(WORKSHOP_NOT_FOUND_REASON, undefined, stderr));
-          return;
-        }
-        if (spawnError.killed) {
-          reject(new InitError('workshop init timed out', undefined, stderr));
           return;
         }
         const exitCode = typeof spawnError.code === 'number' ? spawnError.code : undefined;
