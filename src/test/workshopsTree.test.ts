@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
 
-import { WorkshopInfo, WorkshopUnavailableError } from '../api/client';
+import { WorkshopInfo, WorkshopNotProjectError, WorkshopUnavailableError } from '../api/client';
 import { WorkshopPoller } from '../poller';
 import { Workshop } from '../api/workshops';
 import { WorkshopIncompatibleError } from '../version';
@@ -187,6 +187,39 @@ suite('WorkshopsTreeProvider', () => {
 
     assert.deepStrictEqual(captured, ['empty']);
     assert.deepStrictEqual(provider.getChildren(), []);
+
+    poller.dispose();
+    provider.dispose();
+  });
+
+  test('falls back to workshop.viewState=empty when the directory has no workshop files', async () => {
+    const err = new WorkshopNotProjectError('not a project (no workshop files found)', 404);
+    const poller = new WorkshopPoller<Workshop[]>(() => Promise.reject(err), 50_000);
+    const provider = new WorkshopsTreeProvider(poller, fakeDetailsClient);
+
+    let items: vscode.TreeItem[] = [];
+    const captured = await captureViewState(async () => {
+      await poller.poll();
+      items = provider.getChildren();
+    });
+
+    assert.deepStrictEqual(captured, ['empty']);
+    assert.deepStrictEqual(items, []);
+
+    poller.dispose();
+    provider.dispose();
+  });
+
+  test('leaves workshop.viewState unchanged on other reachable-daemon errors', async () => {
+    const err = new Error('internal server error');
+    const poller = new WorkshopPoller<Workshop[]>(() => Promise.reject(err), 50_000);
+    const provider = new WorkshopsTreeProvider(poller, fakeDetailsClient);
+
+    const captured = await captureViewState(async () => {
+      await poller.poll();
+    });
+
+    assert.deepStrictEqual(captured, []);
 
     poller.dispose();
     provider.dispose();

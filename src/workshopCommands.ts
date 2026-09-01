@@ -3,11 +3,9 @@ import * as vscode from 'vscode';
 import { WorkshopClient } from './api/client';
 import {
   buildInitArgs,
-  definitionExists as definitionExistsOnDisk,
   definitionPath,
   InitError,
   InitSpec,
-  listDefinitionNames,
   runWorkshopInit,
 } from './api/init';
 import { REFERENCE_SDKS } from './api/sdkCatalog';
@@ -62,7 +60,6 @@ interface WorkshopCommandDependencies {
   wizard?: (deps: WizardDeps) => Promise<WizardResult | undefined>;
   runInit?: (spec: InitSpec) => Promise<unknown>;
   existingNames?: (folderPath: string) => Promise<string[]>;
-  definitionExists?: (folderPath: string, name: string) => Promise<boolean>;
   workspaceFolders?: () => { name: string; path: string }[];
 }
 
@@ -74,12 +71,17 @@ export function createWorkshopCommands({
   logsView,
   wizard = runAddWorkshopWizard,
   runInit = runWorkshopInit,
-  existingNames = listDefinitionNames,
-  definitionExists = definitionExistsOnDisk,
+  existingNames,
   workspaceFolders = () => (vscode.workspace.workspaceFolders ?? [])
     .map((folder) => ({ name: folder.name, path: folder.uri.fsPath })),
 }: WorkshopCommandDependencies): WorkshopCommands {
   let wizardOpen = false;
+  /** Names of the project's workshops, resolved through the daemon. */
+  const listExistingNames = existingNames ?? (async (folderPath: string) => {
+    const project = await client.ensureProject(folderPath);
+    const workshops = await listProjectWorkshops(client, project.id);
+    return workshops.map((workshop) => workshop.name);
+  });
   function withSession(workshop: Workshop, callbacks: ReopenCallbacks): ReopenCallbacks {
     return {
       ...callbacks,
@@ -449,7 +451,7 @@ export function createWorkshopCommands({
 
     const result = await wizard({
       folders,
-      existingNames,
+      existingNames: listExistingNames,
       log,
     });
     if (!result) {
@@ -458,7 +460,8 @@ export function createWorkshopCommands({
 
     const { folder, name } = result;
     const target = definitionPath(folder.path, name);
-    if (await definitionExists(folder.path, name)) {
+    const existing = await listExistingNames(folder.path).catch(() => [] as string[]);
+    if (existing.includes(name)) {
       log.info(`Add New Workshop: ${target} already exists`);
       void vscode.window.showWarningMessage(`.workshop/${name}.yaml already exists in ${folder.path}.`);
       await vscode.window.showTextDocument(vscode.Uri.file(target), { preview: false });

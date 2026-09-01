@@ -5,11 +5,9 @@ import * as path from 'path';
 
 import {
   buildInitArgs,
-  definitionExists,
   definitionPath,
   InitError,
   InitSpec,
-  listDefinitionNames,
   parseInitFailure,
   runWorkshopInit,
   WORKSHOP_NOT_FOUND_REASON,
@@ -106,16 +104,5 @@ suite('workshop init runner', () => {
     assert.strictEqual(parseInitFailure('panic: boom\n', 2), 'panic: boom');
     assert.strictEqual(parseInitFailure('', 3), 'workshop init exited with code 3');
     assert.strictEqual(parseInitFailure('', undefined), 'workshop init did not complete');
-  });
-
-  test('lists definitions in .workshop/', async () => {
-    assert.deepStrictEqual(await listDefinitionNames(project), []);
-    fs.mkdirSync(path.join(project, '.workshop'));
-    for (const file of ['web.yaml', 'dev.yaml', 'ci.yml', 'notes.txt']) {
-      fs.writeFileSync(path.join(project, '.workshop', file), '');
-    }
-    assert.deepStrictEqual(await listDefinitionNames(project), ['ci', 'dev', 'web']);
-    assert.strictEqual(await definitionExists(project, 'dev'), true);
-    assert.strictEqual(await definitionExists(project, 'other'), false);
   });
 });

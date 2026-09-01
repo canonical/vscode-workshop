@@ -163,8 +163,19 @@ export class WorkshopUnavailableError extends Error {
   }
 }
 
+/** Thrown when the daemon reports the directory is not a workshop project. */
+export class WorkshopNotProjectError extends WorkshopApiError {
+  constructor(message: string, statusCode: number) {
+    super(message, statusCode);
+    this.name = 'WorkshopNotProjectError';
+  }
+}
+
 /** Socket errors that mean "the daemon isn't reachable" rather than a bug. */
 const UNAVAILABLE_CODES = new Set(['ENOENT', 'ECONNREFUSED', 'EACCES', 'ECONNRESET']);
+
+/** Daemon error message emitted when a directory has no workshop definition files. */
+const NOT_A_PROJECT_MESSAGE = 'not a project (no workshop files found)';
 
 /** The daemon socket path used by a system (non-snap) install. */
 export const DEFAULT_SOCKET_PATH = '/var/lib/workshop/workshop.socket';
@@ -457,6 +468,9 @@ export class WorkshopClient {
         (typeof result?.message === 'string' ? result.message : undefined) ??
         `workshopd request failed (${status})`;
       const kind = typeof result?.kind === 'string' ? result.kind : undefined;
+      if (message.includes(NOT_A_PROJECT_MESSAGE)) {
+        throw new WorkshopNotProjectError(message, status);
+      }
       throw new WorkshopApiError(message, status, kind);
     }
 

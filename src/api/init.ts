@@ -7,7 +7,6 @@
  * This module must stay free of VS Code APIs (see eslint.config.mjs).
  */
 import { execFile } from 'child_process';
-import * as fs from 'fs';
 import * as path from 'path';
 
 export interface InitSdk {
@@ -110,28 +109,4 @@ export function runWorkshopInit(
       },
     );
   });
-}
-
-/** Names of the workshops defined under `<folder>/.workshop/`. */
-export async function listDefinitionNames(folder: string): Promise<string[]> {
-  let entries: string[];
-  try {
-    entries = await fs.promises.readdir(path.join(folder, '.workshop'));
-  } catch {
-    return [];
-  }
-  return entries
-    .filter((entry) => /\.ya?ml$/.test(entry))
-    .map((entry) => entry.replace(/\.ya?ml$/, ''))
-    .sort();
-}
-
-/** Whether `<folder>/.workshop/<name>.yaml` already exists. */
-export async function definitionExists(folder: string, name: string): Promise<boolean> {
-  try {
-    await fs.promises.access(definitionPath(folder, name));
-    return true;
-  } catch {
-    return false;
-  }
 }

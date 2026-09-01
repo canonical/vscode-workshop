@@ -85,6 +85,7 @@ suite('addWorkshop command', () => {
     folders?: { name: string; path: string }[];
     wizard?: (deps: WizardDeps) => Promise<WizardResult | undefined>;
     runInit?: (spec: InitSpec) => Promise<unknown>;
+    existingNames?: (folderPath: string) => Promise<string[]>;
   }) {
     return createWorkshopCommands({
       client: new WorkshopClient({ socketPath: path.join(tmp, 'missing.socket') }),
@@ -94,6 +95,7 @@ suite('addWorkshop command', () => {
       workspaceFolders: () => options.folders ?? [{ name: 'proj', path: tmp }],
       wizard: options.wizard ?? (async () => { throw new Error('wizard should not run'); }),
       runInit: options.runInit ?? (async () => { throw new Error('init should not run'); }),
+      existingNames: options.existingNames ?? (async () => []),
     });
   }
 
@@ -123,7 +125,10 @@ suite('addWorkshop command', () => {
   test('refuses to overwrite an existing definition', async () => {
     fs.mkdirSync(path.join(tmp, '.workshop'));
     fs.writeFileSync(path.join(tmp, '.workshop', 'dev.yaml'), 'name: dev\n');
-    const captured = await capture(() => commands({ wizard: async () => result() }).addWorkshop());
+    const captured = await capture(() => commands({
+      wizard: async () => result(),
+      existingNames: async () => ['dev'],
+    }).addWorkshop());
     assert.deepStrictEqual(captured.warnings, [`.workshop/dev.yaml already exists in ${tmp}.`]);
     assert.strictEqual(
       vscode.window.activeTextEditor?.document.uri.fsPath,
