@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 
 import {
-  commonBases,
   firstFreeName,
   preferredBase,
   REFERENCE_SDKS,
@@ -280,8 +279,7 @@ export async function runAddWorkshopWizard(deps: WizardDeps): Promise<WizardResu
   const baseFrame: Frame = {
     id: 'base',
     run: async (showBack) => {
-      const bases = commonBases([]);
-      const items = basePickItems(bases);
+      const items = basePickItems([...SUPPORTED_BASES]);
       const previous = items.find((item) => item.base === state.base);
       const preferred = items.find((item) => item.base === preferredBase(SUPPORTED_BASES));
       const [picked] = await showPick({

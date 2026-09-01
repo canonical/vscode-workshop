@@ -75,22 +75,6 @@ export const SUPPORTED_BASES: readonly string[] = [
 
 export const DEFAULT_BASE = 'ubuntu@26.04';
 
-/**
- * Bases every SDK is published for, newest first. An `undefined` entry
- * (store unreachable for that SDK) imposes no constraint.
- */
-export function commonBases(perSdk: ReadonlyArray<readonly string[] | undefined>): string[] {
-  let result: string[] = [...SUPPORTED_BASES];
-  for (const bases of perSdk) {
-    if (bases === undefined) {
-      continue;
-    }
-    const available = new Set(bases);
-    result = result.filter((base) => available.has(base));
-  }
-  return result;
-}
-
 /** The base to pre-highlight: the default when offered, else the newest. */
 export function preferredBase(bases: readonly string[]): string | undefined {
   return bases.includes(DEFAULT_BASE) ? DEFAULT_BASE : bases[0];

@@ -1,7 +1,6 @@
 import * as assert from 'assert';
 
 import {
-  commonBases,
   DEFAULT_BASE,
   firstFreeName,
   NAME_EMPTY_MESSAGE,
@@ -10,7 +9,6 @@ import {
   preferredBase,
   REFERENCE_SDKS,
   SDK_CATEGORY_ORDER,
-  SUPPORTED_BASES,
   validateWorkshopName,
 } from '../api/sdkCatalog';
 
@@ -55,24 +53,7 @@ suite('REFERENCE_SDKS', () => {
   });
 });
 
-suite('commonBases / preferredBase', () => {
-  test('intersects newest first', () => {
-    assert.deepStrictEqual(
-      commonBases([['ubuntu@22.04', 'ubuntu@24.04'], ['ubuntu@24.04', 'ubuntu@26.04']]),
-      ['ubuntu@24.04'],
-    );
-  });
-
-  test('unreachable SDKs impose no constraint', () => {
-    assert.deepStrictEqual(commonBases([undefined, ['ubuntu@22.04']]), ['ubuntu@22.04']);
-    assert.deepStrictEqual(commonBases([undefined, undefined]), [...SUPPORTED_BASES]);
-    assert.deepStrictEqual(commonBases([]), [...SUPPORTED_BASES]);
-  });
-
-  test('returns nothing when there is no base in common', () => {
-    assert.deepStrictEqual(commonBases([['ubuntu@22.04'], ['ubuntu@24.04']]), []);
-  });
-
+suite('preferredBase', () => {
   test('prefers the default base, else the newest', () => {
     assert.strictEqual(preferredBase(['ubuntu@26.04', 'ubuntu@22.04']), DEFAULT_BASE);
     assert.strictEqual(preferredBase(['ubuntu@24.04', 'ubuntu@22.04']), 'ubuntu@24.04');
