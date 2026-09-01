@@ -29,7 +29,7 @@ type DetailState =
  */
 export const VIEW_STATE_CONTEXT = 'workshop.viewState';
 
-export type ViewState = 'ready' | 'unavailable' | 'incompatible';
+export type ViewState = 'ready' | 'empty' | 'unavailable' | 'incompatible';
 
 /** URI scheme used to key file decorations for workshop tree items. */
 const WORKSHOP_ITEM_SCHEME = 'workshop-item';
@@ -191,8 +191,9 @@ export class WorkshopsTreeProvider
       poller.onDidUpdate((workshops) => {
         this.pruneDetails(workshops);
         this.cachedItems = workshops;
-        this.viewState = 'ready';
-        void this.setViewState('ready');
+        const nextState: ViewState = workshops.length === 0 ? 'empty' : 'ready';
+        this.viewState = nextState;
+        void this.setViewState(nextState);
         this.log?.debug(`Updated ${workshops.length} workshop(s) from poller`);
         this.decorationProvider.update(workshops, this.activeWorkshopName);
         this.emitter.fire();

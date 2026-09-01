@@ -177,7 +177,7 @@ suite('WorkshopsTreeProvider', () => {
     provider.dispose();
   });
 
-  test('sets workshop.unavailable=false on an empty but successful result', async () => {
+  test('sets workshop.viewState=empty on an empty but successful result', async () => {
     const poller = new WorkshopPoller<Workshop[]>(() => Promise.resolve([]), 50_000);
     const provider = new WorkshopsTreeProvider(poller, fakeDetailsClient);
 
@@ -185,7 +185,7 @@ suite('WorkshopsTreeProvider', () => {
       await poller.poll();
     });
 
-    assert.deepStrictEqual(captured, ['ready']);
+    assert.deepStrictEqual(captured, ['empty']);
     assert.deepStrictEqual(provider.getChildren(), []);
 
     poller.dispose();
