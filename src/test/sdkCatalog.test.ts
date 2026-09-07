@@ -20,7 +20,7 @@ suite('REFERENCE_SDKS', () => {
         'dotnet', 'flutter', 'go', 'gradle', 'maven', 'node', 'openjdk', 'rust', 'uv',
         'cuda-toolkit', 'openvino', 'rocm',
         'comfy-ui', 'ollama',
-        'zephyr', 'zephyr-toolchains',
+        'zephyr',
         'ros2-minimal',
         'direnv', 'docker-ce', 'github-runner', 'jupyter',
       ],
@@ -40,7 +40,6 @@ suite('REFERENCE_SDKS', () => {
     const byName = new Map(REFERENCE_SDKS.map((sdk) => [sdk.name, sdk]));
     assert.strictEqual(byName.get('ollama')?.repoUrl, 'https://github.com/canonical/ollama-sdk');
     assert.strictEqual(byName.get('docker-ce')?.repoUrl, 'https://github.com/canonical/docker-sdk');
-    assert.strictEqual(byName.get('zephyr-toolchains')?.repoUrl, 'https://github.com/canonical/zephyr-toolchains-sdks');
     assert.strictEqual(byName.get('ollama')?.summary, 'Local LLM runtime for running open-weight models');
   });
 

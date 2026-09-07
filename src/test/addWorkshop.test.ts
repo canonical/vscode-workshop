@@ -127,12 +127,12 @@ suite('addWorkshop command', () => {
       runInit: async (spec) => { specs.push(spec); await fakeInit(spec); },
     }).addWorkshop());
 
-    // Channels come from the static catalogue; both node and go have no recommendedChannel set.
+    // Channels come from the static catalogue's recommended LTS tracks.
     assert.deepStrictEqual(specs, [{
       folder: tmp,
       name: 'dev',
       base: 'ubuntu@24.04',
-      sdks: [{ name: 'node', channel: undefined }, { name: 'go', channel: undefined }],
+      sdks: [{ name: 'node', channel: '24/stable' }, { name: 'go', channel: '1.27/stable' }],
     }]);
     assert.deepStrictEqual(captured.errors, []);
     assert.ok(captured.commands.includes('workshop.poll'));
