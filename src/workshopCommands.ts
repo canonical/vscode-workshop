@@ -478,6 +478,15 @@ export function createWorkshopCommands({
     log.info(`Created ${target}`);
     await vscode.window.showTextDocument(vscode.Uri.file(target), { preview: false });
     void vscode.commands.executeCommand('workshop.poll');
+
+    const project = await client.ensureProject(folder.path).catch(() => undefined);
+    if (project) {
+      await createOpenPrompt({
+        workshops: [{ name, status: 'Off', definitionPath: target, projectId: project.id }],
+        message: `Created "${name}". Reopen this window in the workshop?`,
+        reopen: async (workshop) => reopenInWorkshopCommand(new WorkshopItem(workshop)),
+      });
+    }
   }
 
   return {
