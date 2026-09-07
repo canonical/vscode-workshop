@@ -41,7 +41,7 @@ suite('Add New Workshop wizard items', () => {
   test('base rows mark the default base, or the newest when it is unavailable', () => {
     assert.deepStrictEqual(
       basePickItems(['ubuntu@26.04', 'ubuntu@24.04']).map((i) => [i.label, i.description]),
-      [['ubuntu@26.04', '(default)'], ['ubuntu@24.04', undefined]],
+      [['ubuntu@24.04', '(default)'], ['ubuntu@26.04', undefined]],
     );
     assert.deepStrictEqual(
       basePickItems(['ubuntu@24.04', 'ubuntu@22.04']).map((i) => [i.label, i.description]),

@@ -98,9 +98,10 @@ function sdkGroup(sdks: SdkInfo[], extensionUri: vscode.Uri): WorkshopInfoItem {
       collapsibleState: vscode.TreeItemCollapsibleState.Expanded,
     });
   }
+  const visible = sdks.filter((sdk) => !isSystemSdk(sdk));
   return new WorkshopInfoItem('SDKs',
-    sdks.filter((sdk) => !isSystemSdk(sdk)).map(sdkItem), {
-    description: `${sdks.length} installed`,
+    visible.map(sdkItem), {
+    description: `${visible.length} installed`,
     iconPath: mediaIconPair(extensionUri, 'sdks'),
     collapsibleState: vscode.TreeItemCollapsibleState.Expanded,
   });

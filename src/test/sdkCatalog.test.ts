@@ -55,7 +55,7 @@ suite('REFERENCE_SDKS', () => {
 
 suite('preferredBase', () => {
   test('prefers the default base, else the newest', () => {
-    assert.strictEqual(preferredBase(['ubuntu@26.04', 'ubuntu@22.04']), DEFAULT_BASE);
+    assert.strictEqual(preferredBase(['ubuntu@26.04', 'ubuntu@22.04']), 'ubuntu@26.04');
     assert.strictEqual(preferredBase(['ubuntu@24.04', 'ubuntu@22.04']), 'ubuntu@24.04');
     assert.strictEqual(preferredBase([]), undefined);
   });

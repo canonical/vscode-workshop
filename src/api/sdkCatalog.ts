@@ -92,7 +92,7 @@ export const SUPPORTED_BASES: readonly string[] = [
   'ubuntu@20.04',
 ];
 
-export const DEFAULT_BASE = 'ubuntu@26.04';
+export const DEFAULT_BASE = 'ubuntu@24.04';
 
 /** The base to pre-highlight: the default when offered, else the newest. */
 export function preferredBase(bases: readonly string[]): string | undefined {

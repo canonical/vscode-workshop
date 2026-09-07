@@ -88,7 +88,10 @@ export function sdkPickItems(): SdkPickItem[] {
 /** Base rows, newest first, with the preferred base marked `(default)`. */
 export function basePickItems(bases: readonly string[]): BasePickItem[] {
   const preferred = preferredBase(bases);
-  return bases.map((base) => ({
+  const ordered = preferred
+    ? [preferred, ...bases.filter((base) => base !== preferred)]
+    : [...bases];
+  return ordered.map((base) => ({
     label: base,
     description: base === preferred ? '(default)' : undefined,
     base,
