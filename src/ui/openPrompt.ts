@@ -52,6 +52,11 @@ export interface OpenPromptDeps {
    */
   projectPath?: string;
   /**
+   * Notification message shown to the user. Defaults to the generic
+   * "definition(s) detected" prompt used on activation.
+   */
+  message?: string;
+  /**
    * Called with the chosen workshop when the user confirms.
    * Should invoke the `workshop.reopenInWorkshop` command or equivalent.
    */
@@ -94,7 +99,7 @@ export async function createOpenPrompt(deps: OpenPromptDeps): Promise<boolean> {
 
   const BUTTON = 'Reopen in Workshop';
   const answer = await showMessage(
-    'Workshop definition(s) detected. Reopen this window in a workshop?',
+    deps.message ?? 'Workshop definition(s) detected. Reopen this window in a workshop?',
     BUTTON,
     'Not now',
   );

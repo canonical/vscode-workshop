@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { WorkshopClient, WorkshopInfo, WorkshopUnavailableError } from '../api/client';
+import { WorkshopClient, WorkshopInfo, WorkshopNotProjectError, WorkshopUnavailableError } from '../api/client';
 import { WorkshopPoller } from '../poller';
 import { WorkshopIncompatibleError } from '../version';
 import { statusIcon } from './statusIcon';
@@ -29,7 +29,7 @@ type DetailState =
  */
 export const VIEW_STATE_CONTEXT = 'workshop.viewState';
 
-export type ViewState = 'ready' | 'unavailable' | 'incompatible';
+export type ViewState = 'ready' | 'empty' | 'unavailable' | 'incompatible';
 
 /** URI scheme used to key file decorations for workshop tree items. */
 const WORKSHOP_ITEM_SCHEME = 'workshop-item';
@@ -191,8 +191,9 @@ export class WorkshopsTreeProvider
       poller.onDidUpdate((workshops) => {
         this.pruneDetails(workshops);
         this.cachedItems = workshops;
-        this.viewState = 'ready';
-        void this.setViewState('ready');
+        const nextState: ViewState = workshops.length === 0 ? 'empty' : 'ready';
+        this.viewState = nextState;
+        void this.setViewState(nextState);
         this.log?.debug(`Updated ${workshops.length} workshop(s) from poller`);
         this.decorationProvider.update(workshops, this.activeWorkshopName);
         this.emitter.fire();
@@ -206,6 +207,12 @@ export class WorkshopsTreeProvider
             `Workshop daemon unavailable (${err.code ?? 'no code'}): ${err.message}. ` +
               'Showing the welcome view.',
           );
+        } else if (err instanceof WorkshopNotProjectError) {
+          // The directory has no workshop files: show the empty welcome instead of a blank panel.
+          this.cachedItems = [];
+          this.viewState = 'empty';
+          void this.setViewState('empty');
+          this.log?.debug(`No workshop files found: ${err.message}`);
         } else {
           this.log?.error(`Poller error: ${err.message}`);
         }

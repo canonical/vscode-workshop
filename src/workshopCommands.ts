@@ -1,7 +1,20 @@
 import * as vscode from 'vscode';
 
 import { WorkshopClient } from './api/client';
+import {
+  buildInitArgs,
+  definitionPath,
+  InitError,
+  InitSpec,
+  runWorkshopInit,
+} from './api/init';
+import { REFERENCE_SDKS } from './api/sdkCatalog';
 import { canRefresh, listProjectWorkshops, Workshop } from './api/workshops';
+import {
+  runAddWorkshopWizard,
+  WizardDeps,
+  WizardResult,
+} from './ui/addWorkshopWizard';
 import {
   refreshAndReopen,
   refreshWorkshop,
@@ -35,6 +48,7 @@ export interface WorkshopCommands {
   refresh(item: WorkshopItem, mode?: RefreshMode): void;
   openDefinition(arg: WorkshopItem | string): void;
   turnOff(item: WorkshopItem): Promise<void>;
+  addWorkshop(): Promise<void>;
 }
 
 interface WorkshopCommandDependencies {
@@ -42,6 +56,10 @@ interface WorkshopCommandDependencies {
   globalState: vscode.Memento;
   log: vscode.LogOutputChannel;
   logsView: LogsView;
+  /** Overrides below are injected in tests to keep VS Code UI and the CLI out of the hot path. */
+  wizard?: (deps: WizardDeps) => Promise<WizardResult | undefined>;
+  runInit?: (spec: InitSpec) => Promise<unknown>;
+  workspaceFolders?: () => { name: string; path: string }[];
 }
 
 /** Create command handlers that share the extension's long-lived dependencies. */
@@ -50,7 +68,12 @@ export function createWorkshopCommands({
   globalState,
   log,
   logsView,
+  wizard = runAddWorkshopWizard,
+  runInit = runWorkshopInit,
+  workspaceFolders = () => (vscode.workspace.workspaceFolders ?? [])
+    .map((folder) => ({ name: folder.name, path: folder.uri.fsPath })),
 }: WorkshopCommandDependencies): WorkshopCommands {
+  let wizardOpen = false;
   function withSession(workshop: Workshop, callbacks: ReopenCallbacks): ReopenCallbacks {
     return {
       ...callbacks,
@@ -146,18 +169,18 @@ export function createWorkshopCommands({
           void runPendingOperation(pendingOp);
           return;
         }
-        await showOpenPrompt(project.id, localPath);
+        await showOpenPrompt(project.id);
       })
       .catch((err: unknown) => {
         log.debug(`Open prompt skipped: ${err instanceof Error ? err.message : String(err)}`);
       });
   }
 
-  async function showOpenPrompt(projectId: string, localPath: string): Promise<void> {
+  async function showOpenPrompt(projectId: string): Promise<void> {
     const workshops = await listProjectWorkshops(client, projectId);
     await createOpenPrompt({
       workshops,
-      projectPath: localPath,
+      projectPath: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
       reopen: async (workshop) => reopenInWorkshopCommand(new WorkshopItem(workshop)),
     });
   }
@@ -397,6 +420,77 @@ export function createWorkshopCommands({
     );
   }
 
+  /** Add New Workshop: only one wizard runs at a time. */
+  async function addWorkshop(): Promise<void> {
+    if (wizardOpen) {
+      log.debug('Add New Workshop ignored: a wizard is already open');
+      return;
+    }
+    wizardOpen = true;
+    try {
+      await runAddWorkshop();
+    } finally {
+      wizardOpen = false;
+    }
+  }
+
+  async function runAddWorkshop(): Promise<void> {
+    const folders = workspaceFolders();
+    if (folders.length === 0) {
+      void vscode.window.showWarningMessage('Open a folder first to create a workshop.');
+      return;
+    }
+
+    const result = await wizard({
+      folders,
+      log,
+    });
+    if (!result) {
+      return;
+    }
+
+    const { folder, name } = result;
+    const target = definitionPath(folder.path, name);
+
+    const spec: InitSpec = {
+      folder: folder.path,
+      name,
+      base: result.base,
+      sdks: result.sdks.map((sdkName) => ({
+        name: sdkName,
+        channel: REFERENCE_SDKS.find((r) => r.name === sdkName)?.recommendedChannel,
+      })),
+    };
+    log.info(`Creating workshop: workshop ${buildInitArgs(spec).join(' ')}`);
+    try {
+      await runInit(spec);
+    } catch (err: unknown) {
+      const reason = err instanceof InitError
+        ? err.reason
+        : err instanceof Error ? err.message : String(err);
+      log.error(`Failed to create workshop "${name}": ${reason}`);
+      if (err instanceof InitError && err.stderr.trim()) {
+        log.error(err.stderr.trim());
+      }
+      void vscode.window.showErrorMessage(`${reason}`);
+      return;
+    }
+
+    log.info(`Created ${target}`);
+    await vscode.window.showTextDocument(vscode.Uri.file(target), { preview: false });
+    void vscode.commands.executeCommand('workshop.poll');
+
+    const project = await client.ensureProject(folder.path).catch(() => undefined);
+    if (project) {
+      // Fire-and-forget: awaiting would hold the wizard-open guard until dismissed.
+      void createOpenPrompt({
+        workshops: [{ name, status: 'Off', definitionPath: target, projectId: project.id }],
+        message: `Created "${name}". Reopen this window in the workshop?`,
+        reopen: async (workshop) => reopenInWorkshopCommand(new WorkshopItem(workshop)),
+      });
+    }
+  }
+
   return {
     activateLocalProject,
     definitionChanged,
@@ -405,6 +499,7 @@ export function createWorkshopCommands({
     refresh,
     openDefinition,
     turnOff,
+    addWorkshop,
   };
 }
 
