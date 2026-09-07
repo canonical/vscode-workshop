@@ -137,7 +137,7 @@ export class WorkshopItem extends vscode.TreeItem {
     );
     this.resourceUri = vscode.Uri.from({ scheme: WORKSHOP_ITEM_SCHEME, path: `/${workshop.name}` });
     this.tooltip = workshop.name;
-    this.description = workshop.status;
+    this.description = active ? `${workshop.status} · Active` : workshop.status;
     this.iconPath = workshopIcon(workshop.status, active, extensionUri);
     if (workshop.status === 'Waiting') {
       // A paused-mid-refresh workshop offers continue/abort actions. The active
