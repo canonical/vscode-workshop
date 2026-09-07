@@ -266,10 +266,6 @@ export async function runAddWorkshopWizard(deps: WizardDeps): Promise<WizardResu
         },
       });
       const names = new Set(picked.map((item) => item.sdk?.name).filter((n): n is string => !!n));
-      if (names.size === 0) {
-        deps.log.debug('Add New Workshop aborted: no SDKs selected');
-        return 'abort';
-      }
       state.sdkNames = order.filter((name) => names.has(name));
       return baseFrame;
     },
