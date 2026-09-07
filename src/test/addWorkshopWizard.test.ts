@@ -29,13 +29,13 @@ suite('Add New Workshop wizard items', () => {
 
     const uv = rows.find((i) => i.label === 'uv');
     const ollama = rows.find((i) => i.label === 'ollama');
-    assert.deepStrictEqual(uv?.buttons, []);
+    assert.strictEqual(uv?.buttons?.length, 1);
     assert.strictEqual(ollama?.buttons?.length, 1);
 
     // Each category separator directly precedes its first SDK.
     const first = items.findIndex((i) => i.kind === vscode.QuickPickItemKind.Separator);
-    assert.strictEqual(items[first].label, 'AI/ML');
-    assert.strictEqual(items[first + 1].label, 'ollama');
+    assert.strictEqual(items[first].label, 'AI agents');
+    assert.strictEqual(items[first + 1].label, 'agy');
   });
 
   test('base rows mark the default base, or the newest when it is unavailable', () => {

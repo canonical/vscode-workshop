@@ -16,11 +16,13 @@ suite('REFERENCE_SDKS', () => {
     assert.deepStrictEqual(
       REFERENCE_SDKS.map((sdk) => sdk.name),
       [
-        'ollama', 'openvino', 'rocm',
-        'claude-code', 'codex', 'copilot', 'opencode',
-        'flutter', 'go', 'node', 'rust', 'uv',
-        'direnv', 'docker-ce', 'github-runner',
-        'jupyter', 'vscode-remote',
+        'agy', 'claude-code', 'codex', 'copilot', 'opencode',
+        'dotnet', 'flutter', 'go', 'gradle', 'maven', 'node', 'openjdk', 'rust', 'uv',
+        'cuda-toolkit', 'openvino', 'rocm',
+        'comfy-ui', 'ollama',
+        'zephyr', 'zephyr-toolchains',
+        'ros2-minimal',
+        'direnv', 'docker-ce', 'github-runner', 'jupyter',
       ],
     );
   });
@@ -38,8 +40,8 @@ suite('REFERENCE_SDKS', () => {
     const byName = new Map(REFERENCE_SDKS.map((sdk) => [sdk.name, sdk]));
     assert.strictEqual(byName.get('ollama')?.repoUrl, 'https://github.com/canonical/ollama-sdk');
     assert.strictEqual(byName.get('docker-ce')?.repoUrl, 'https://github.com/canonical/docker-sdk');
-    assert.strictEqual(byName.get('uv')?.repoUrl, undefined);
-    assert.strictEqual(byName.get('ollama')?.summary, 'Get up and running with large language models');
+    assert.strictEqual(byName.get('zephyr-toolchains')?.repoUrl, 'https://github.com/canonical/zephyr-toolchains-sdks');
+    assert.strictEqual(byName.get('ollama')?.summary, 'Local LLM runtime for running open-weight models');
   });
 
   test('each recommendedChannel, when set, matches track/risk', () => {

@@ -6,19 +6,23 @@
  */
 
 export type SdkCategory =
-  | 'AI/ML'
   | 'AI agents'
-  | 'Toolchains'
-  | 'Developer tools'
-  | 'IDEs';
+  | 'Languages & runtimes'
+  | 'GPU & hardware'
+  | 'AI/ML serving'
+  | 'Embedded'
+  | 'Robotics'
+  | 'Developer tools';
 
 /** Display order of SDK categories in the picker. */
 export const SDK_CATEGORY_ORDER: readonly SdkCategory[] = [
-  'AI/ML',
   'AI agents',
-  'Toolchains',
+  'Languages & runtimes',
+  'GPU & hardware',
+  'AI/ML serving',
+  'Embedded',
+  'Robotics',
   'Developer tools',
-  'IDEs',
 ];
 
 export interface ReferenceSdk {
@@ -42,27 +46,36 @@ function canonicalSdk(
 }
 
 /**
- * All reference SDKs published by Canonical, as of 2026-08-28. Ordered by
- * category (see {@link SDK_CATEGORY_ORDER}) and alphabetically within each.
+ * All reference SDKs published by Canonical, as of 2026-09-07 (see
+ * https://github.com/canonical/reference-sdks). Ordered by category (see
+ * {@link SDK_CATEGORY_ORDER}) and alphabetically within each.
  */
 export const REFERENCE_SDKS: readonly ReferenceSdk[] = [
-  canonicalSdk('ollama', 'AI/ML', 'Get up and running with large language models'),
-  canonicalSdk('openvino', 'AI/ML', "Intel's OpenVINO Toolkit"),
-  canonicalSdk('rocm', 'AI/ML', 'AMD ROCm runtime (apt)'),
-  canonicalSdk('claude-code', 'AI agents', 'Claude Code CLI'),
-  canonicalSdk('codex', 'AI agents', 'OpenAI Codex CLI agent'),
-  canonicalSdk('copilot', 'AI agents', 'GitHub Copilot CLI - AI-powered coding assistant for the terminal'),
-  canonicalSdk('opencode', 'AI agents', 'The OpenCode SDK.'),
-  canonicalSdk('flutter', 'Toolchains', "Google's UI toolkit for multi-platform apps"),
-  canonicalSdk('go', 'Toolchains', 'The Go programming language'),
-  canonicalSdk('node', 'Toolchains', 'Node.js'),
-  canonicalSdk('rust', 'Toolchains', 'The Rust toolchain installer'),
-  { name: 'uv', category: 'Toolchains', summary: 'An extremely fast Python package and project manager' },
-  canonicalSdk('direnv', 'Developer tools', 'Load .envrc-driven environment variables in workshop sessions'),
-  canonicalSdk('docker-ce', 'Developer tools', 'Docker container runtime', 'docker-sdk'),
-  canonicalSdk('github-runner', 'Developer tools', 'Run GitHub Actions inside a local workshop'),
-  canonicalSdk('jupyter', 'IDEs', 'JupyterLab IDE'),
-  canonicalSdk('vscode-remote', 'IDEs', 'VS Code Remote Development plugin support'),
+  canonicalSdk('agy', 'AI agents', 'The terminal-first surface to interact with Antigravity agents'),
+  canonicalSdk('claude-code', 'AI agents', "Anthropic's agentic coding tool for the terminal"),
+  canonicalSdk('codex', 'AI agents', "OpenAI's CLI coding agent"),
+  canonicalSdk('copilot', 'AI agents', 'GitHub Copilot for the terminal'),
+  canonicalSdk('opencode', 'AI agents', 'Open-source terminal-based AI coding assistant'),
+  canonicalSdk('dotnet', 'Languages & runtimes', 'Microsoft .NET SDK'),
+  canonicalSdk('flutter', 'Languages & runtimes', "Google's cross-platform UI toolkit"),
+  canonicalSdk('go', 'Languages & runtimes', 'Go programming language toolchain'),
+  canonicalSdk('gradle', 'Languages & runtimes', 'Gradle build system for Java, Android and Kotlin projects'),
+  canonicalSdk('maven', 'Languages & runtimes', 'Apache Maven build tool for Java projects'),
+  canonicalSdk('node', 'Languages & runtimes', 'Node.js LTS runtime with Corepack'),
+  canonicalSdk('openjdk', 'Languages & runtimes', 'Open-source Java Development Kit (JDK)'),
+  canonicalSdk('rust', 'Languages & runtimes', 'Rust toolchain managed via Rustup'),
+  canonicalSdk('uv', 'Languages & runtimes', 'Fast Python package and project manager'),
+  canonicalSdk('cuda-toolkit', 'GPU & hardware', 'NVIDIA CUDA Toolkit for GPU parallel computing'),
+  canonicalSdk('openvino', 'GPU & hardware', 'Intel OpenVINO toolkit for AI inference'),
+  canonicalSdk('rocm', 'GPU & hardware', 'AMD ROCm open GPU compute platform'),
+  canonicalSdk('comfy-ui', 'AI/ML serving', 'Node-based UI for Stable Diffusion image generation'),
+  canonicalSdk('ollama', 'AI/ML serving', 'Local LLM runtime for running open-weight models'),
+  canonicalSdk('zephyr', 'Embedded', 'Zephyr RTOS build environment (west, cmake, ninja)'),
+  canonicalSdk('ros2-minimal', 'Robotics', 'ROS 2 robotics development environment'),
+  canonicalSdk('direnv', 'Developer tools', 'Automatic per-directory environment variable loader'),
+  canonicalSdk('docker-ce', 'Developer tools', 'Docker container runtime and CLI', 'docker-sdk'),
+  canonicalSdk('github-runner', 'Developer tools', 'Self-hosted GitHub Actions runner'),
+  canonicalSdk('jupyter', 'Developer tools', 'Browser-based interactive Python IDE'),
 ];
 
 /** Bases Workshop supports, newest first. */
