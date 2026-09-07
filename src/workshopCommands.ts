@@ -481,7 +481,8 @@ export function createWorkshopCommands({
 
     const project = await client.ensureProject(folder.path).catch(() => undefined);
     if (project) {
-      await createOpenPrompt({
+      // Fire-and-forget: awaiting would hold the wizard-open guard until dismissed.
+      void createOpenPrompt({
         workshops: [{ name, status: 'Off', definitionPath: target, projectId: project.id }],
         message: `Created "${name}". Reopen this window in the workshop?`,
         reopen: async (workshop) => reopenInWorkshopCommand(new WorkshopItem(workshop)),
