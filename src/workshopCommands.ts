@@ -180,6 +180,7 @@ export function createWorkshopCommands({
     const workshops = await listProjectWorkshops(client, projectId);
     await createOpenPrompt({
       workshops,
+      projectPath: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
       reopen: async (workshop) => reopenInWorkshopCommand(new WorkshopItem(workshop)),
     });
   }
