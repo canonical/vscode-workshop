@@ -2,7 +2,6 @@ import * as assert from 'assert';
 
 import {
   DEFAULT_BASE,
-  firstFreeName,
   NAME_EMPTY_MESSAGE,
   NAME_PATTERN_MESSAGE,
   NAME_TOO_LONG_MESSAGE,
@@ -76,14 +75,5 @@ suite('validateWorkshopName', () => {
     }
     assert.strictEqual(validateWorkshopName('a'.repeat(41)), NAME_TOO_LONG_MESSAGE);
     assert.strictEqual(NAME_TOO_LONG_MESSAGE, 'Name is too long (max 40).');
-  });
-});
-
-suite('firstFreeName', () => {
-  test('counts up from dev', () => {
-    assert.strictEqual(firstFreeName([]), 'dev');
-    assert.strictEqual(firstFreeName(['dev1']), 'dev');
-    assert.strictEqual(firstFreeName(['dev']), 'dev1');
-    assert.strictEqual(firstFreeName(['dev', 'dev1', 'web']), 'dev2');
   });
 });

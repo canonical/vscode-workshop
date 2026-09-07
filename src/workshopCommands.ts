@@ -59,7 +59,6 @@ interface WorkshopCommandDependencies {
   /** Overrides below are injected in tests to keep VS Code UI and the CLI out of the hot path. */
   wizard?: (deps: WizardDeps) => Promise<WizardResult | undefined>;
   runInit?: (spec: InitSpec) => Promise<unknown>;
-  existingNames?: (folderPath: string) => Promise<string[]>;
   workspaceFolders?: () => { name: string; path: string }[];
 }
 
@@ -71,17 +70,10 @@ export function createWorkshopCommands({
   logsView,
   wizard = runAddWorkshopWizard,
   runInit = runWorkshopInit,
-  existingNames,
   workspaceFolders = () => (vscode.workspace.workspaceFolders ?? [])
     .map((folder) => ({ name: folder.name, path: folder.uri.fsPath })),
 }: WorkshopCommandDependencies): WorkshopCommands {
   let wizardOpen = false;
-  /** Names of the project's workshops, resolved through the daemon. */
-  const listExistingNames = existingNames ?? (async (folderPath: string) => {
-    const project = await client.ensureProject(folderPath);
-    const workshops = await listProjectWorkshops(client, project.id);
-    return workshops.map((workshop) => workshop.name);
-  });
   function withSession(workshop: Workshop, callbacks: ReopenCallbacks): ReopenCallbacks {
     return {
       ...callbacks,
@@ -177,18 +169,17 @@ export function createWorkshopCommands({
           void runPendingOperation(pendingOp);
           return;
         }
-        await showOpenPrompt(project.id, localPath);
+        await showOpenPrompt(project.id);
       })
       .catch((err: unknown) => {
         log.debug(`Open prompt skipped: ${err instanceof Error ? err.message : String(err)}`);
       });
   }
 
-  async function showOpenPrompt(projectId: string, localPath: string): Promise<void> {
+  async function showOpenPrompt(projectId: string): Promise<void> {
     const workshops = await listProjectWorkshops(client, projectId);
     await createOpenPrompt({
       workshops,
-      projectPath: localPath,
       reopen: async (workshop) => reopenInWorkshopCommand(new WorkshopItem(workshop)),
     });
   }
@@ -451,7 +442,6 @@ export function createWorkshopCommands({
 
     const result = await wizard({
       folders,
-      existingNames: listExistingNames,
       log,
     });
     if (!result) {
@@ -460,13 +450,6 @@ export function createWorkshopCommands({
 
     const { folder, name } = result;
     const target = definitionPath(folder.path, name);
-    const existing = await listExistingNames(folder.path).catch(() => [] as string[]);
-    if (existing.includes(name)) {
-      log.info(`Add New Workshop: ${target} already exists`);
-      void vscode.window.showWarningMessage(`.workshop/${name}.yaml already exists in ${folder.path}.`);
-      await vscode.window.showTextDocument(vscode.Uri.file(target), { preview: false });
-      return;
-    }
 
     const spec: InitSpec = {
       folder: folder.path,
@@ -488,35 +471,13 @@ export function createWorkshopCommands({
       if (err instanceof InitError && err.stderr.trim()) {
         log.error(err.stderr.trim());
       }
-      void vscode.window.showErrorMessage(`Failed to create workshop "${name}": ${reason}`);
+      void vscode.window.showErrorMessage(`${reason}`);
       return;
     }
 
     log.info(`Created ${target}`);
     await vscode.window.showTextDocument(vscode.Uri.file(target), { preview: false });
     void vscode.commands.executeCommand('workshop.poll');
-
-    const choice = await vscode.window.showInformationMessage(
-      `Created ${name}. Reopen this folder in the workshop?`,
-      'Reopen in Workshop',
-      'Not Now',
-    );
-    if (choice !== 'Reopen in Workshop') {
-      return;
-    }
-    await reopenNewWorkshop(folder.path, name, target).catch((err: unknown) => {
-      const message = err instanceof Error ? err.message : String(err);
-      log.error(`Couldn't reopen in workshop ${name}: ${message}`);
-      void vscode.window.showErrorMessage(`Couldn't reopen in workshop "${name}": ${message}`);
-    });
-  }
-
-  async function reopenNewWorkshop(folderPath: string, name: string, target: string): Promise<void> {
-    const project = await client.ensureProject(folderPath);
-    const workshops = await listProjectWorkshops(client, project.id);
-    const workshop: Workshop = workshops.find((candidate) => candidate.name === name)
-      ?? { name, status: 'Off', projectId: project.id, definitionPath: target };
-    reopenInWorkshopCommand(new WorkshopItem(workshop));
   }
 
   return {

@@ -26,8 +26,6 @@ export interface WizardResult {
 export interface WizardDeps {
   /** Workspace folders to choose from; must not be empty. */
   folders: WizardFolder[];
-  /** Names of the workshops already defined in a folder (for the name pre-fill). */
-  existingNames: (folderPath: string) => Promise<string[]>;
   log: Pick<vscode.LogOutputChannel, 'info' | 'warn' | 'debug'>;
   /** Override for `vscode.env.openExternal` — injected in tests. */
   openExternal?: (url: string) => Thenable<boolean>;
@@ -297,9 +295,7 @@ export async function runAddWorkshopWizard(deps: WizardDeps): Promise<WizardResu
   const nameFrame: Frame = {
     id: 'name',
     run: async (showBack) => {
-      const folder = state.folder as WizardFolder;
-      const existing = await deps.existingNames(folder.path).catch(() => [] as string[]);
-      const value = state.name ?? firstFreeName(existing);
+      const value = "dev";
       const [picked] = await showPick<NameActionItem>({
         title: 'Enter a name',
         placeholder: 'Enter a name for the workshop',
