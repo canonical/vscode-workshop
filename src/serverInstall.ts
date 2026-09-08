@@ -258,3 +258,84 @@ export async function scpPush(
     );
   }
 }
+
+/**
+ * Absolute remote paths (using `$HOME`) for both server layouts, keyed by the
+ * client's commit. Used inside remote `bash -c` scripts where `$HOME` expands.
+ */
+export interface ServerLayout {
+  dataDir: string;
+  legacyServerDir: string;
+  legacyLauncher: string;
+  cliServerDir: string;
+  cliLauncher: string;
+  cliBinary: string;
+}
+
+/** CLI server directory label per quality: `Stable-<commit>` / `Insiders-<commit>`. */
+function qualityLabel(quality: string): string {
+  return quality === 'insider' || quality === 'insiders' ? 'Insiders' : 'Stable';
+}
+
+/** Compute the on-disk layout paths for a client identity. */
+export function serverLayout(identity: ClientServerIdentity): ServerLayout {
+  const dataDir = `$HOME/${identity.serverDataFolderName}`;
+  const legacyServerDir = `${dataDir}/bin/${identity.commit}`;
+  const cliServerDir =
+    `${dataDir}/cli/servers/${qualityLabel(identity.quality)}-${identity.commit}/server`;
+  return {
+    dataDir,
+    legacyServerDir,
+    legacyLauncher: `${legacyServerDir}/bin/${identity.serverApplicationName}`,
+    cliServerDir,
+    cliLauncher: `${cliServerDir}/bin/${identity.serverApplicationName}`,
+    cliBinary: `${dataDir}/code-${identity.commit}`,
+  };
+}
+
+/** Map `uname -sm` output to a supported {@link RemotePlatform}. */
+export function mapUname(uname: string): RemotePlatform | undefined {
+  const [os, machine] = uname.trim().split(/\s+/);
+  if (os !== 'Linux') {
+    return undefined;
+  }
+  switch (machine) {
+    case 'x86_64':
+      return 'linux-x64';
+    case 'aarch64':
+    case 'arm64':
+      return 'linux-arm64';
+    case 'armv7l':
+    case 'armv8l':
+    case 'armhf':
+      return 'linux-armhf';
+    default:
+      return undefined;
+  }
+}
+
+/** Detect the remote platform via `uname -sm`; throws when unsupported. */
+export async function detectRemotePlatform(ssh: SshRun): Promise<RemotePlatform> {
+  const uname = (await ssh(['uname', '-sm'])).trim();
+  const platform = mapUname(uname);
+  if (!platform) {
+    throw new Error(`Unsupported remote platform: ${uname}`);
+  }
+  return platform;
+}
+
+/**
+ * True when a complete server is already installed under either layout. Checks
+ * that a launcher exists and is executable, so a partial extract reads as absent.
+ */
+export async function remoteServerPresent(
+  identity: ClientServerIdentity,
+  ssh: SshRun,
+): Promise<boolean> {
+  const layout = serverLayout(identity);
+  const script =
+    `if [ -x "${layout.legacyLauncher}" ] || [ -x "${layout.cliLauncher}" ]; ` +
+    'then echo present; else echo absent; fi';
+  const out = (await ssh(['bash', '-c', script])).trim();
+  return out === 'present';
+}

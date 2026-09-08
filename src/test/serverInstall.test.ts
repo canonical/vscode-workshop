@@ -7,10 +7,15 @@ import {
   serverDownloadUrl,
   scpPush,
   sshRun,
+  detectRemotePlatform,
+  mapUname,
+  remoteServerPresent,
+  serverLayout,
   type CacheFs,
   type ClientServerIdentity,
   type SpawnFn,
   type SpawnedProcess,
+  type SshRun,
 } from '../serverInstall';
 
 function reader(files: Record<string, string>) {
@@ -311,5 +316,81 @@ suite('scpPush', () => {
       scpPush(fakeSpawn(calls, { code: 1, stderr: 'no space' }), 'host', '/a', '/b'),
       /scp to host:\/b exited 1: no space/,
     );
+  });
+});
+
+/** An SshRun that records argv and replies from a script->output map. */
+function fakeSsh(
+  replies: Record<string, string>,
+  calls: string[][] = [],
+): SshRun {
+  return (argv) => {
+    calls.push(argv);
+    const key = argv.join(' ');
+    return Promise.resolve(replies[key] ?? '');
+  };
+}
+
+suite('mapUname', () => {
+  test('maps supported architectures', () => {
+    assert.strictEqual(mapUname('Linux x86_64'), 'linux-x64');
+    assert.strictEqual(mapUname('Linux aarch64'), 'linux-arm64');
+    assert.strictEqual(mapUname('Linux armv7l'), 'linux-armhf');
+  });
+
+  test('returns undefined for non-Linux or unknown machines', () => {
+    assert.strictEqual(mapUname('Darwin arm64'), undefined);
+    assert.strictEqual(mapUname('Linux sparc'), undefined);
+  });
+});
+
+suite('detectRemotePlatform', () => {
+  test('runs uname -sm and maps the result', async () => {
+    const platform = await detectRemotePlatform(fakeSsh({ 'uname -sm': 'Linux aarch64\n' }));
+    assert.strictEqual(platform, 'linux-arm64');
+  });
+
+  test('throws on an unsupported platform', async () => {
+    await assert.rejects(
+      detectRemotePlatform(fakeSsh({ 'uname -sm': 'Linux sparc64' })),
+      /Unsupported remote platform: Linux sparc64/,
+    );
+  });
+});
+
+suite('serverLayout', () => {
+  test('derives legacy and CLI paths from the identity', () => {
+    const layout = serverLayout(STABLE);
+    assert.strictEqual(layout.legacyLauncher, '$HOME/.vscode-server/bin/abc123/bin/code-server');
+    assert.strictEqual(
+      layout.cliLauncher,
+      '$HOME/.vscode-server/cli/servers/Stable-abc123/server/bin/code-server',
+    );
+    assert.strictEqual(layout.cliBinary, '$HOME/.vscode-server/code-abc123');
+  });
+
+  test('uses the Insiders label for insider quality', () => {
+    const layout = serverLayout({ ...STABLE, quality: 'insider' });
+    assert.ok(layout.cliServerDir.includes('/Insiders-abc123/'));
+  });
+});
+
+suite('remoteServerPresent', () => {
+  test('returns true when the probe reports present', async () => {
+    const present = await remoteServerPresent(
+      STABLE,
+      () => Promise.resolve('present\n'),
+    );
+    assert.strictEqual(present, true);
+  });
+
+  test('returns false when the probe reports absent', async () => {
+    const calls: string[][] = [];
+    const present = await remoteServerPresent(STABLE, fakeSsh({}, calls));
+    assert.strictEqual(present, false);
+    assert.strictEqual(calls[0][0], 'bash');
+    assert.strictEqual(calls[0][1], '-c');
+    assert.ok(calls[0][2].includes('$HOME/.vscode-server/bin/abc123/bin/code-server'));
+    assert.ok(calls[0][2].includes('Stable-abc123/server/bin/code-server'));
   });
 });
