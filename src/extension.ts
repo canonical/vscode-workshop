@@ -52,6 +52,8 @@ export function activate(context: vscode.ExtensionContext): void {
     globalState: context.globalState,
     log,
     logsView,
+    appRoot: vscode.env.appRoot,
+    globalStorageUri: context.globalStorageUri,
   });
 
   const mountsDataDeps = { client };
