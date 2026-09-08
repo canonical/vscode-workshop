@@ -9,7 +9,14 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 ### Changed
 
 - README: feature overview, screenshots, and a link to the step-by-step guide
-  in the Workshop documentation
+  in the Workshop documentation.
+
+### Added
+
+- Pre-install a matching VS Code server into a workshop over SSH before
+  connecting, so Remote-SSH never downloads it on the air-gapped host. Supports
+  both the legacy `bin/<commit>` and CLI `cli/servers/Stable-<commit>` layouts,
+  caches downloads locally, and can be disabled with `workshop.preinstallServer`.
 
 ## [0.5.0] - 27-08-2026
 
