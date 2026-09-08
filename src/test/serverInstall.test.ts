@@ -5,8 +5,12 @@ import {
   ensureCachedTarball,
   readClientServerIdentity,
   serverDownloadUrl,
+  scpPush,
+  sshRun,
   type CacheFs,
   type ClientServerIdentity,
+  type SpawnFn,
+  type SpawnedProcess,
 } from '../serverInstall';
 
 function reader(files: Record<string, string>) {
@@ -223,5 +227,89 @@ suite('ensureCachedTarball', () => {
     );
     assert.deepStrictEqual(state.removed, ['/cache/server.tgz.part']);
     assert.ok(!state.files.has('/cache/server.tgz'));
+  });
+});
+
+interface SpawnCall {
+  command: string;
+  args: string[];
+}
+
+/** A fake spawn that records argv and emits the given exit code and streams. */
+function fakeSpawn(
+  calls: SpawnCall[],
+  outcome: { code: number; stdout?: string; stderr?: string } = { code: 0 },
+): SpawnFn {
+  return (command, args) => {
+    calls.push({ command, args });
+    const process: SpawnedProcess = {
+      stdout: { on: (_e, listener) => listener(outcome.stdout ?? '') },
+      stderr: { on: (_e, listener) => listener(outcome.stderr ?? '') },
+      on: (event, listener) => {
+        if (event === 'close') {
+          queueMicrotask(() => (listener as (code: number | null) => void)(outcome.code));
+        }
+      },
+    };
+    return process;
+  };
+}
+
+suite('sshRun', () => {
+  test('passes BatchMode options, hostname, then argv and returns stdout', async () => {
+    const calls: SpawnCall[] = [];
+    const out = await sshRun(
+      fakeSpawn(calls, { code: 0, stdout: 'Linux x86_64\n' }),
+      'web.proj-1.wp',
+      ['uname', '-sm'],
+    );
+
+    assert.strictEqual(out, 'Linux x86_64\n');
+    assert.deepStrictEqual(calls, [
+      {
+        command: 'ssh',
+        args: [
+          '-o', 'BatchMode=yes',
+          '-o', 'ConnectTimeout=10',
+          'web.proj-1.wp',
+          'uname', '-sm',
+        ],
+      },
+    ]);
+  });
+
+  test('throws on non-zero exit', async () => {
+    const calls: SpawnCall[] = [];
+    await assert.rejects(
+      sshRun(fakeSpawn(calls, { code: 255, stderr: 'boom' }), 'host', ['true']),
+      /ssh host exited 255: boom/,
+    );
+  });
+});
+
+suite('scpPush', () => {
+  test('builds the scp argv with host:remotePath target', async () => {
+    const calls: SpawnCall[] = [];
+    await scpPush(fakeSpawn(calls), 'host', '/local/x.tgz', '/tmp/x.tgz');
+
+    assert.deepStrictEqual(calls, [
+      {
+        command: 'scp',
+        args: [
+          '-o', 'BatchMode=yes',
+          '-o', 'ConnectTimeout=10',
+          '/local/x.tgz',
+          'host:/tmp/x.tgz',
+        ],
+      },
+    ]);
+  });
+
+  test('throws on non-zero exit', async () => {
+    const calls: SpawnCall[] = [];
+    await assert.rejects(
+      scpPush(fakeSpawn(calls, { code: 1, stderr: 'no space' }), 'host', '/a', '/b'),
+      /scp to host:\/b exited 1: no space/,
+    );
   });
 });

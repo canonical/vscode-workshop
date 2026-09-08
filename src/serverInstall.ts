@@ -1,3 +1,4 @@
+import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -171,5 +172,89 @@ export async function ensureCachedTarball(
   } catch (err) {
     fsImpl.rmSync(partPath, { force: true });
     throw err;
+  }
+}
+
+/** Minimal spawned-process surface used by the SSH/SCP wrappers. */
+export interface SpawnedProcess {
+  stdout: { on(event: 'data', listener: (chunk: Buffer | string) => void): void } | null;
+  stderr: { on(event: 'data', listener: (chunk: Buffer | string) => void): void } | null;
+  on(event: 'error', listener: (err: Error) => void): void;
+  on(event: 'close', listener: (code: number | null) => void): void;
+}
+
+/** Injectable `child_process.spawn`; only argv arrays are ever passed (no shell). */
+export type SpawnFn = (command: string, args: string[]) => SpawnedProcess;
+
+const defaultSpawn: SpawnFn = (command, args) => cp.spawn(command, args);
+
+/** Result of running a process to completion. */
+export interface ProcessResult {
+  code: number;
+  stdout: string;
+  stderr: string;
+}
+
+/**
+ * SSH options shared by every invocation: fail fast rather than prompt, so a
+ * misconfigured host never blocks the reopen flow on an interactive question.
+ */
+const SSH_OPTIONS = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10'];
+
+/** Run a process to completion, capturing stdout/stderr. Never uses a shell. */
+export function runProcess(
+  spawn: SpawnFn,
+  command: string,
+  args: string[],
+): Promise<ProcessResult> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args);
+    let stdout = '';
+    let stderr = '';
+    child.stdout?.on('data', (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr?.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on('error', reject);
+    child.on('close', (code) => resolve({ code: code ?? 0, stdout, stderr }));
+  });
+}
+
+/** SSH runner bound to a hostname: resolves stdout, throws on non-zero exit. */
+export type SshRun = (argv: string[]) => Promise<string>;
+/** SCP pusher bound to a hostname: resolves on success, throws on non-zero exit. */
+export type ScpPush = (localPath: string, remotePath: string) => Promise<void>;
+
+/** Run `ssh <hostname> <argv…>` and return stdout, throwing on failure. */
+export async function sshRun(
+  spawn: SpawnFn,
+  hostname: string,
+  argv: string[],
+): Promise<string> {
+  const result = await runProcess(spawn, 'ssh', [...SSH_OPTIONS, hostname, ...argv]);
+  if (result.code !== 0) {
+    throw new Error(`ssh ${hostname} exited ${result.code}: ${result.stderr.trim()}`);
+  }
+  return result.stdout;
+}
+
+/** Run `scp <localPath> <hostname>:<remotePath>`, throwing on failure. */
+export async function scpPush(
+  spawn: SpawnFn,
+  hostname: string,
+  localPath: string,
+  remotePath: string,
+): Promise<void> {
+  const result = await runProcess(spawn, 'scp', [
+    ...SSH_OPTIONS,
+    localPath,
+    `${hostname}:${remotePath}`,
+  ]);
+  if (result.code !== 0) {
+    throw new Error(
+      `scp to ${hostname}:${remotePath} exited ${result.code}: ${result.stderr.trim()}`,
+    );
   }
 }
