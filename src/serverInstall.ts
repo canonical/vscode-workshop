@@ -421,3 +421,109 @@ export async function installRemoteServer(
   }
   await ssh(['bash', '-c', buildInstallScript(identity, remote, tmpDir)]);
 }
+
+/** Structured logger; satisfied by `vscode.LogOutputChannel`. */
+export interface InstallLog {
+  debug(message: string): void;
+  info(message: string): void;
+  warn(message: string): void;
+}
+
+/** Options for the top-level {@link installServer} orchestrator. */
+export interface InstallServerOptions {
+  /** Resolved `.wp` hostname to seed. */
+  hostname: string;
+  /** `vscode.env.appRoot` — where the local `product.json` lives. */
+  appRoot: string;
+  /** Persistent cache root (e.g. under `globalStorageUri`). */
+  cacheDir: string;
+  /** Injectable `product.json` reader (defaults to `fs.readFileSync`). */
+  readFile?: ReadFile;
+  /** Injectable download function (defaults to global `fetch`). */
+  fetchImpl?: FetchLike;
+  /** Injectable `child_process.spawn` (defaults to the real one). */
+  spawn?: SpawnFn;
+  /** Injectable cache filesystem (defaults to `fs`). */
+  fsImpl?: CacheFs;
+  /** Structured log sink. */
+  log?: InstallLog;
+  /** Progress reporter for the reopen notification. */
+  progress?: (message: string) => void;
+}
+
+const inFlight = new Map<string, Promise<void>>();
+
+/**
+ * Pre-install a matching VS Code server on `hostname` before Remote-SSH
+ * connects, so it never downloads the server on (or for) the host.
+ *
+ * Ties together identity read -> platform detect -> presence probe -> cache
+ * -> remote install. Skips silently when there is no `commit` (OSS/dev build)
+ * or the server is already present. Never throws: any failure is logged and the
+ * caller falls back to stock Remote-SSH. A per-hostname lock prevents double
+ * seeding when reopen fires concurrently.
+ */
+export function installServer(options: InstallServerOptions): Promise<void> {
+  const existing = inFlight.get(options.hostname);
+  if (existing) {
+    return existing;
+  }
+  const run = seedServer(options).finally(() => inFlight.delete(options.hostname));
+  inFlight.set(options.hostname, run);
+  return run;
+}
+
+async function seedServer(options: InstallServerOptions): Promise<void> {
+  const {
+    hostname,
+    appRoot,
+    cacheDir,
+    readFile,
+    fetchImpl = (url) => fetch(url),
+    spawn = defaultSpawn,
+    fsImpl = defaultCacheFs,
+    log,
+    progress,
+  } = options;
+
+  try {
+    const identity = readClientServerIdentity(appRoot, readFile);
+    if (!identity) {
+      log?.debug('Server pre-install skipped: no commit in product.json (OSS/dev build).');
+      return;
+    }
+
+    const ssh: SshRun = (argv) => sshRun(spawn, hostname, argv);
+    const scp: ScpPush = (local, remote) => scpPush(spawn, hostname, local, remote);
+
+    const platform = await detectRemotePlatform(ssh);
+
+    if (await remoteServerPresent(identity, ssh)) {
+      log?.debug(`Server ${identity.commit} already present on ${hostname}; skipping seed.`);
+      return;
+    }
+
+    progress?.('Preparing VS Code server…');
+    const baseDir = path.join(cacheDir, identity.quality, identity.commit, platform);
+    const serverPath = await ensureCachedTarball(
+      path.join(baseDir, 'server.tar.gz'),
+      serverDownloadUrl(identity, platform),
+      fetchImpl,
+      fsImpl,
+    );
+    const cliPath = await ensureCachedTarball(
+      path.join(baseDir, 'cli.gz'),
+      cliDownloadUrl(identity, platform),
+      fetchImpl,
+      fsImpl,
+    );
+
+    progress?.('Installing VS Code server…');
+    log?.info(`Seeding server ${identity.commit} (${platform}) to ${hostname}.`);
+    await installRemoteServer(identity, { server: serverPath, cli: cliPath }, ssh, scp);
+    log?.info(`Server ${identity.commit} seeded to ${hostname}.`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    log?.warn(`Server pre-install for ${hostname} failed; falling back to Remote-SSH: ${message}`);
+  }
+}

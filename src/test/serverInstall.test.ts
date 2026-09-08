@@ -13,8 +13,10 @@ import {
   serverLayout,
   buildInstallScript,
   installRemoteServer,
+  installServer,
   type CacheFs,
   type ClientServerIdentity,
+  type InstallLog,
   type SpawnFn,
   type SpawnedProcess,
   type SshRun,
@@ -476,5 +478,145 @@ suite('installRemoteServer', () => {
       ['/cache/server.tgz', '/tmp/seed/server.tar.gz'],
       ['/cache/cli.gz', '/tmp/seed/cli.gz'],
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// installServer orchestrator
+// ---------------------------------------------------------------------------
+
+function fakeLog(): InstallLog & { messages: string[] } {
+  const messages: string[] = [];
+  return {
+    messages,
+    debug: (m) => messages.push(`debug: ${m}`),
+    info: (m) => messages.push(`info: ${m}`),
+    warn: (m) => messages.push(`warn: ${m}`),
+  };
+}
+
+/**
+ * A spawn stub for the orchestrator: answers `uname`, the presence probe, and
+ * `mktemp`, treats everything else as a success. `present` toggles the probe.
+ */
+function orchestratorSpawn(
+  present: boolean,
+  calls: { command: string; args: string[] }[],
+): SpawnFn {
+  return (command, args) => {
+    calls.push({ command, args });
+    let stdout = '';
+    if (command === 'ssh') {
+      const remote = args.slice(5); // after 4 -o options + hostname
+      if (remote.includes('uname')) {
+        stdout = 'Linux x86_64\n';
+      } else if (remote[0] === 'mktemp') {
+        stdout = '/tmp/seed\n';
+      } else if (remote[0] === 'bash' && remote[2]?.includes('echo present')) {
+        stdout = present ? 'present\n' : 'absent\n';
+      }
+    }
+    const process: SpawnedProcess = {
+      stdout: { on: (_e, listener) => listener(stdout) },
+      stderr: { on: () => {} },
+      on: (event, listener) => {
+        if (event === 'close') {
+          queueMicrotask(() => (listener as (code: number | null) => void)(0));
+        }
+      },
+    };
+    return process;
+  };
+}
+
+const PRODUCT_JSON = JSON.stringify({ commit: 'abc123', quality: 'stable' });
+
+suite('installServer', () => {
+  test('skips silently when product.json has no commit', async () => {
+    const log = fakeLog();
+    let fetched = 0;
+    await installServer({
+      hostname: 'skip-none.wp',
+      appRoot: '/app',
+      cacheDir: '/cache',
+      readFile: () => JSON.stringify({ quality: 'stable' }),
+      fetchImpl: async () => {
+        fetched++;
+        return { ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(0) };
+      },
+      spawn: orchestratorSpawn(false, []),
+      fsImpl: fakeFs().fs,
+      log,
+    });
+    assert.strictEqual(fetched, 0);
+    assert.ok(log.messages.some((m) => m.includes('no commit in product.json')));
+  });
+
+  test('skips download and install when the server is already present', async () => {
+    const log = fakeLog();
+    const calls: { command: string; args: string[] }[] = [];
+    let fetched = 0;
+    await installServer({
+      hostname: 'skip-present.wp',
+      appRoot: '/app',
+      cacheDir: '/cache',
+      readFile: () => PRODUCT_JSON,
+      fetchImpl: async () => {
+        fetched++;
+        return { ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(0) };
+      },
+      spawn: orchestratorSpawn(true, calls),
+      fsImpl: fakeFs().fs,
+      log,
+    });
+    assert.strictEqual(fetched, 0);
+    assert.ok(!calls.some((c) => c.command === 'scp'));
+    assert.ok(log.messages.some((m) => m.includes('already present')));
+  });
+
+  test('downloads once and installs when the server is absent', async () => {
+    const log = fakeLog();
+    const calls: { command: string; args: string[] }[] = [];
+    const fetchedUrls: string[] = [];
+    await installServer({
+      hostname: 'seed.wp',
+      appRoot: '/app',
+      cacheDir: '/cache',
+      readFile: () => PRODUCT_JSON,
+      fetchImpl: async (url) => {
+        fetchedUrls.push(url);
+        return {
+          ok: true,
+          status: 200,
+          arrayBuffer: async () => new ArrayBuffer(4),
+        };
+      },
+      spawn: orchestratorSpawn(false, calls),
+      fsImpl: fakeFs().fs,
+      log,
+    });
+
+    assert.strictEqual(fetchedUrls.length, 2);
+    assert.ok(fetchedUrls.some((u) => u.includes('server-linux-x64')));
+    assert.ok(fetchedUrls.some((u) => u.includes('cli-linux-x64')));
+    assert.ok(calls.some((c) => c.command === 'scp'));
+    assert.ok(log.messages.some((m) => m.includes('seeded to seed.wp')));
+  });
+
+  test('never throws; logs a warning on failure', async () => {
+    const log = fakeLog();
+    await installServer({
+      hostname: 'boom.wp',
+      appRoot: '/app',
+      cacheDir: '/cache',
+      readFile: () => PRODUCT_JSON,
+      fetchImpl: async () => {
+        throw new Error('network down');
+      },
+      spawn: orchestratorSpawn(false, []),
+      fsImpl: fakeFs().fs,
+      log,
+    });
+    assert.ok(log.messages.some((m) => m.startsWith('warn:') && m.includes('network down')));
   });
 });
