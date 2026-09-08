@@ -2,8 +2,10 @@ import * as assert from 'assert';
 
 import {
   cliDownloadUrl,
+  ensureCachedTarball,
   readClientServerIdentity,
   serverDownloadUrl,
+  type CacheFs,
   type ClientServerIdentity,
 } from '../serverInstall';
 
@@ -129,5 +131,97 @@ suite('cliDownloadUrl', () => {
       cliDownloadUrl(STABLE, 'linux-x64'),
       'https://update.code.visualstudio.com/commit:abc123/cli-linux-x64/stable',
     );
+  });
+});
+
+interface FakeFsState {
+  files: Set<string>;
+  writes: string[];
+  removed: string[];
+  fs: CacheFs;
+}
+
+function fakeFs(existing: string[] = []): FakeFsState {
+  const files = new Set(existing);
+  const writes: string[] = [];
+  const removed: string[] = [];
+  return {
+    files,
+    writes,
+    removed,
+    fs: {
+      existsSync: (p) => files.has(p),
+      mkdirSync: () => {},
+      writeFileSync: (p) => {
+        writes.push(p);
+        files.add(p);
+      },
+      renameSync: (from, to) => {
+        files.delete(from);
+        files.add(to);
+      },
+      rmSync: (p) => {
+        removed.push(p);
+        files.delete(p);
+      },
+    },
+  };
+}
+
+suite('ensureCachedTarball', () => {
+  test('reuses an existing cached file without fetching', async () => {
+    const state = fakeFs(['/cache/server.tgz']);
+    let fetched = 0;
+    const result = await ensureCachedTarball(
+      '/cache/server.tgz',
+      'https://dl/server.tgz',
+      async () => {
+        fetched++;
+        return { ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(0) };
+      },
+      state.fs,
+    );
+
+    assert.strictEqual(result, '/cache/server.tgz');
+    assert.strictEqual(fetched, 0);
+    assert.deepStrictEqual(state.writes, []);
+  });
+
+  test('downloads once to a .part file then renames', async () => {
+    const state = fakeFs();
+    let fetched = 0;
+    await ensureCachedTarball(
+      '/cache/server.tgz',
+      'https://dl/server.tgz',
+      async () => {
+        fetched++;
+        return {
+          ok: true,
+          status: 200,
+          arrayBuffer: async () => new TextEncoder().encode('payload').buffer,
+        };
+      },
+      state.fs,
+    );
+
+    assert.strictEqual(fetched, 1);
+    assert.deepStrictEqual(state.writes, ['/cache/server.tgz.part']);
+    assert.ok(state.files.has('/cache/server.tgz'));
+    assert.ok(!state.files.has('/cache/server.tgz.part'));
+  });
+
+  test('cleans up the partial file and throws on HTTP error', async () => {
+    const state = fakeFs();
+    await assert.rejects(
+      ensureCachedTarball(
+        '/cache/server.tgz',
+        'https://dl/server.tgz',
+        async () => ({ ok: false, status: 404, arrayBuffer: async () => new ArrayBuffer(0) }),
+        state.fs,
+      ),
+      /HTTP 404/,
+    );
+    assert.deepStrictEqual(state.removed, ['/cache/server.tgz.part']);
+    assert.ok(!state.files.has('/cache/server.tgz'));
   });
 });

@@ -116,3 +116,60 @@ function applyTemplate(
     .replace(/\$\{os\}/g, os)
     .replace(/\$\{arch\}/g, arch);
 }
+
+/** Minimal `fetch` shape used for downloads; injected in tests. */
+export type FetchLike = (url: string) => Promise<{
+  ok: boolean;
+  status: number;
+  arrayBuffer(): Promise<ArrayBuffer>;
+}>;
+
+/** Minimal filesystem surface used by the cache; injected in tests. */
+export interface CacheFs {
+  existsSync(filePath: string): boolean;
+  mkdirSync(dir: string, options: { recursive: boolean }): void;
+  writeFileSync(filePath: string, data: Buffer): void;
+  renameSync(from: string, to: string): void;
+  rmSync(filePath: string, options: { force: boolean }): void;
+}
+
+const defaultCacheFs: CacheFs = {
+  existsSync: fs.existsSync,
+  mkdirSync: (dir, options) => void fs.mkdirSync(dir, options),
+  writeFileSync: fs.writeFileSync,
+  renameSync: fs.renameSync,
+  rmSync: fs.rmSync,
+};
+
+/**
+ * Download `url` into `targetPath` exactly once, reusing an existing file.
+ *
+ * Writes to a `*.part` sibling first, then renames on success so a partial
+ * transfer never looks complete. On failure the partial file is removed.
+ * Returns `targetPath` for convenience.
+ */
+export async function ensureCachedTarball(
+  targetPath: string,
+  url: string,
+  fetchImpl: FetchLike,
+  fsImpl: CacheFs = defaultCacheFs,
+): Promise<string> {
+  if (fsImpl.existsSync(targetPath)) {
+    return targetPath;
+  }
+  fsImpl.mkdirSync(path.dirname(targetPath), { recursive: true });
+
+  const partPath = `${targetPath}.part`;
+  try {
+    const response = await fetchImpl(url);
+    if (!response.ok) {
+      throw new Error(`Download failed (HTTP ${response.status}) for ${url}`);
+    }
+    fsImpl.writeFileSync(partPath, Buffer.from(await response.arrayBuffer()));
+    fsImpl.renameSync(partPath, targetPath);
+    return targetPath;
+  } catch (err) {
+    fsImpl.rmSync(partPath, { force: true });
+    throw err;
+  }
+}
