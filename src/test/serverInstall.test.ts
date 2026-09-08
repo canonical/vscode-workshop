@@ -1,6 +1,11 @@
 import * as assert from 'assert';
 
-import { readClientServerIdentity } from '../serverInstall';
+import {
+  cliDownloadUrl,
+  readClientServerIdentity,
+  serverDownloadUrl,
+  type ClientServerIdentity,
+} from '../serverInstall';
 
 function reader(files: Record<string, string>) {
   return (filePath: string): string => {
@@ -83,5 +88,46 @@ suite('readClientServerIdentity', () => {
       reader({ '/app/product.json': 'not json' }),
     );
     assert.strictEqual(identity, undefined);
+  });
+});
+
+const STABLE: ClientServerIdentity = {
+  commit: 'abc123',
+  quality: 'stable',
+  serverDataFolderName: '.vscode-server',
+  serverApplicationName: 'code-server',
+};
+
+suite('serverDownloadUrl', () => {
+  test('uses the update fallback keyed by commit when no template', () => {
+    assert.strictEqual(
+      serverDownloadUrl(STABLE, 'linux-x64'),
+      'https://update.code.visualstudio.com/commit:abc123/server-linux-x64/stable',
+    );
+    assert.strictEqual(
+      serverDownloadUrl(STABLE, 'linux-arm64'),
+      'https://update.code.visualstudio.com/commit:abc123/server-linux-arm64/stable',
+    );
+  });
+
+  test('interpolates the product.json template placeholders', () => {
+    const identity: ClientServerIdentity = {
+      ...STABLE,
+      serverDownloadUrlTemplate:
+        'https://dl/${quality}/${commit}/vscode-server-${os}-${arch}.tar.gz',
+    };
+    assert.strictEqual(
+      serverDownloadUrl(identity, 'linux-armhf'),
+      'https://dl/stable/abc123/vscode-server-linux-armhf.tar.gz',
+    );
+  });
+});
+
+suite('cliDownloadUrl', () => {
+  test('builds the CLI binary URL keyed by commit and platform', () => {
+    assert.strictEqual(
+      cliDownloadUrl(STABLE, 'linux-x64'),
+      'https://update.code.visualstudio.com/commit:abc123/cli-linux-x64/stable',
+    );
   });
 });
