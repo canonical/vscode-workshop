@@ -339,3 +339,85 @@ export async function remoteServerPresent(
   const out = (await ssh(['bash', '-c', script])).trim();
   return out === 'present';
 }
+
+/** Local (already downloaded) tarball paths to push to the host. */
+export interface LocalTarballs {
+  /** The `vscode-server-<platform>.tar.gz` payload (required). */
+  server: string;
+  /** The gzipped CLI binary; enables seeding the CLI layout when present. */
+  cli?: string;
+}
+
+/** Remote paths after upload; mirrors {@link LocalTarballs}. */
+interface RemoteTarballs {
+  server: string;
+  cli?: string;
+}
+
+/**
+ * Build the idempotent remote `bash` script that seeds both server layouts.
+ *
+ * Each layout is guarded by its launcher check, extracted with
+ * `--strip-components=1` into a staging sibling, then atomically `mv`d into
+ * place so a partial transfer never looks installed. The CLI layout (and its
+ * `code-<commit>` binary) is only emitted when a CLI tarball was uploaded.
+ */
+export function buildInstallScript(
+  identity: ClientServerIdentity,
+  tarballs: RemoteTarballs,
+  tmpDir: string,
+): string {
+  const layout = serverLayout(identity);
+  const lines = ['set -eu'];
+
+  lines.push(
+    `if [ ! -x "${layout.legacyLauncher}" ]; then`,
+    `  mkdir -p "$(dirname "${layout.legacyServerDir}")"`,
+    `  rm -rf "${layout.legacyServerDir}.staging"`,
+    `  mkdir -p "${layout.legacyServerDir}.staging"`,
+    `  tar -xzf "${tarballs.server}" -C "${layout.legacyServerDir}.staging" --strip-components=1`,
+    `  rm -rf "${layout.legacyServerDir}"`,
+    `  mv "${layout.legacyServerDir}.staging" "${layout.legacyServerDir}"`,
+    'fi',
+  );
+
+  if (tarballs.cli) {
+    lines.push(
+      `if [ ! -x "${layout.cliLauncher}" ]; then`,
+      `  mkdir -p "$(dirname "${layout.cliServerDir}")"`,
+      `  rm -rf "${layout.cliServerDir}.staging"`,
+      `  mkdir -p "${layout.cliServerDir}.staging"`,
+      `  tar -xzf "${tarballs.server}" -C "${layout.cliServerDir}.staging" --strip-components=1`,
+      `  rm -rf "${layout.cliServerDir}"`,
+      `  mv "${layout.cliServerDir}.staging" "${layout.cliServerDir}"`,
+      `  gunzip -c "${tarballs.cli}" > "${layout.cliBinary}.staging"`,
+      `  chmod +x "${layout.cliBinary}.staging"`,
+      `  mv "${layout.cliBinary}.staging" "${layout.cliBinary}"`,
+      'fi',
+    );
+  }
+
+  lines.push(`rm -rf "${tmpDir}"`);
+  return lines.join('\n');
+}
+
+/**
+ * Push the tarball(s) to a temp dir on the host and extract them atomically
+ * into the legacy and (when a CLI tarball is given) CLI layouts. Idempotent:
+ * already-installed layouts are left untouched.
+ */
+export async function installRemoteServer(
+  identity: ClientServerIdentity,
+  tarballs: LocalTarballs,
+  ssh: SshRun,
+  scp: ScpPush,
+): Promise<void> {
+  const tmpDir = (await ssh(['mktemp', '-d'])).trim();
+  const remote: RemoteTarballs = { server: `${tmpDir}/server.tar.gz` };
+  await scp(tarballs.server, remote.server);
+  if (tarballs.cli) {
+    remote.cli = `${tmpDir}/cli.gz`;
+    await scp(tarballs.cli, remote.cli);
+  }
+  await ssh(['bash', '-c', buildInstallScript(identity, remote, tmpDir)]);
+}

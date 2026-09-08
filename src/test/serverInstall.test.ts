@@ -11,6 +11,8 @@ import {
   mapUname,
   remoteServerPresent,
   serverLayout,
+  buildInstallScript,
+  installRemoteServer,
   type CacheFs,
   type ClientServerIdentity,
   type SpawnFn,
@@ -392,5 +394,87 @@ suite('remoteServerPresent', () => {
     assert.strictEqual(calls[0][1], '-c');
     assert.ok(calls[0][2].includes('$HOME/.vscode-server/bin/abc123/bin/code-server'));
     assert.ok(calls[0][2].includes('Stable-abc123/server/bin/code-server'));
+  });
+});
+
+suite('buildInstallScript', () => {
+  test('seeds only the legacy layout when no CLI tarball', () => {
+    const script = buildInstallScript(
+      STABLE,
+      { server: '/tmp/x/server.tar.gz' },
+      '/tmp/x',
+    );
+    assert.ok(script.startsWith('set -eu\n'));
+    assert.ok(script.includes('if [ ! -x "$HOME/.vscode-server/bin/abc123/bin/code-server" ]'));
+    assert.ok(script.includes(
+      'tar -xzf "/tmp/x/server.tar.gz" ' +
+      '-C "$HOME/.vscode-server/bin/abc123.staging" --strip-components=1',
+    ));
+    assert.ok(script.includes(
+      'mv "$HOME/.vscode-server/bin/abc123.staging" "$HOME/.vscode-server/bin/abc123"',
+    ));
+    assert.ok(!script.includes('cli/servers'));
+    assert.ok(script.trimEnd().endsWith('rm -rf "/tmp/x"'));
+  });
+
+  test('seeds the CLI layout and binary when a CLI tarball is given', () => {
+    const script = buildInstallScript(
+      STABLE,
+      { server: '/tmp/x/server.tar.gz', cli: '/tmp/x/cli.gz' },
+      '/tmp/x',
+    );
+    assert.ok(script.includes(
+      'if [ ! -x ' +
+      '"$HOME/.vscode-server/cli/servers/Stable-abc123/server/bin/code-server" ]',
+    ));
+    assert.ok(script.includes(
+      'mv "$HOME/.vscode-server/cli/servers/Stable-abc123/server.staging" ' +
+      '"$HOME/.vscode-server/cli/servers/Stable-abc123/server"',
+    ));
+    assert.ok(script.includes('gunzip -c "/tmp/x/cli.gz" > "$HOME/.vscode-server/code-abc123.staging"'));
+    assert.ok(script.includes('mv "$HOME/.vscode-server/code-abc123.staging" "$HOME/.vscode-server/code-abc123"'));
+  });
+});
+
+suite('installRemoteServer', () => {
+  test('mktemps, scps the server tarball, then runs the install script', async () => {
+    const sshCalls: string[][] = [];
+    const scpCalls: [string, string][] = [];
+    const ssh: SshRun = (argv) => {
+      sshCalls.push(argv);
+      return Promise.resolve(argv[0] === 'mktemp' ? '/tmp/seed\n' : '');
+    };
+    const scp = (local: string, remote: string): Promise<void> => {
+      scpCalls.push([local, remote]);
+      return Promise.resolve();
+    };
+
+    await installRemoteServer(STABLE, { server: '/cache/server.tgz' }, ssh, scp);
+
+    assert.deepStrictEqual(sshCalls[0], ['mktemp', '-d']);
+    assert.deepStrictEqual(scpCalls, [['/cache/server.tgz', '/tmp/seed/server.tar.gz']]);
+    assert.strictEqual(sshCalls[1][0], 'bash');
+    assert.ok(sshCalls[1][2].includes('tar -xzf "/tmp/seed/server.tar.gz"'));
+  });
+
+  test('also pushes the CLI tarball when provided', async () => {
+    const scpCalls: [string, string][] = [];
+    const ssh: SshRun = (argv) => Promise.resolve(argv[0] === 'mktemp' ? '/tmp/seed' : '');
+    const scp = (local: string, remote: string): Promise<void> => {
+      scpCalls.push([local, remote]);
+      return Promise.resolve();
+    };
+
+    await installRemoteServer(
+      STABLE,
+      { server: '/cache/server.tgz', cli: '/cache/cli.gz' },
+      ssh,
+      scp,
+    );
+
+    assert.deepStrictEqual(scpCalls, [
+      ['/cache/server.tgz', '/tmp/seed/server.tar.gz'],
+      ['/cache/cli.gz', '/tmp/seed/cli.gz'],
+    ]);
   });
 });
