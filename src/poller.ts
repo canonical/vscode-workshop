@@ -1,10 +1,9 @@
 import * as vscode from 'vscode';
-
-import { deepEqual } from './util/deepEqual';
+import { isDeepStrictEqual } from 'node:util';
 
 /**
  * Polls `fn()` on a fixed interval and fires {@link onDidUpdate} when the
- * result changes (compared structurally with {@link deepEqual}). Fires
+ * result changes (compared structurally with {@link isDeepStrictEqual}). Fires
  * {@link onDidError} when `fn()` rejects.
  *
  * Polling only runs while at least one activation handle is outstanding.
@@ -127,7 +126,7 @@ export class WorkshopPoller<T> implements vscode.Disposable {
   private async tick(): Promise<void> {
     try {
       const result = await this.fn();
-      if (!this.lastGood || !deepEqual(result, this.lastParsed)) {
+      if (!this.lastGood || !isDeepStrictEqual(result, this.lastParsed)) {
         this.lastParsed = result;
         this.lastGood = true;
         this.updateEmitter.fire(result);
