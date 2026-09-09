@@ -83,18 +83,16 @@ suite('WorkshopClient over a fake workshopd socket', () => {
     await assert.rejects(() => client.listWorkshops('missing'), /not found/);
   });
 
-  test('ensureProject memoizes the project by path', async () => {
+  test('ensureProject is stateless: every call asks the daemon', async () => {
     const client = new WorkshopClient({ socketPath });
 
     const a = await client.ensureProject('/repo');
     const b = await client.ensureProject('/repo');
 
     assert.deepStrictEqual(a, b);
-    assert.strictEqual(projectPostCount, 1, 'the project is resolved only once');
-
-    // A different path resolves (and POSTs) independently.
-    await client.ensureProject('/other');
-    assert.strictEqual(projectPostCount, 2);
+    // No memoization in the client — project ids are not stable per path, so
+    // the caller (ProjectContext) owns when to resolve.
+    assert.strictEqual(projectPostCount, 2, 'each call POSTs /v1/projects');
   });
 });
 
