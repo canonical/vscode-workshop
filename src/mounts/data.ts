@@ -9,7 +9,6 @@ import { isBuilt, mergeWorkshops, Workshop } from '../api/workshops';
 import { InflightTracker } from './inflight';
 import { HostMounts, buildSections } from './model';
 import { MementoLike, pruneMemory, rememberLivePairings } from './memory';
-import { loadDeclaredConnections } from './declared';
 import {
   derivePanelState,
   MSG_NO_SELECTION,
@@ -34,7 +33,6 @@ export interface MountsDataDeps {
   client: MountsClient;
   memento: MementoLike;
   inflight: InflightTracker;
-  readFile: (filePath: string) => Promise<string>;
 }
 
 /**
@@ -195,19 +193,12 @@ async function fetchLiveState(
     hostSources,
   );
 
-  // Re-read per poll by design: no mtime/content cache for the definition.
-  const definitionPath = detail.path ?? workshop.definitionPath;
-  const declared = definitionPath !== undefined
-    ? await loadDeclaredConnections(definitionPath, deps.readFile)
-    : [];
-
   return {
     sections: buildSections({
       projectId,
       workshop: workshop.name,
       snapshot,
       mounts: hostMounts,
-      declared,
       memory,
       pendingRowIds: deps.inflight.pendingRowIds(),
     }),

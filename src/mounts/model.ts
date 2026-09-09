@@ -11,7 +11,6 @@ import {
   slotKey,
   SYSTEM_SDK,
 } from '../api/connections';
-import { DeclaredPairing } from './declared';
 import { RememberedWiring, WorkshopMemory } from './memory';
 
 /**
@@ -65,7 +64,6 @@ export interface BuildSectionsInput {
    * daemon-derived auto path (established mounts only).
    */
   mounts: HostMounts;
-  declared: DeclaredPairing[];
   memory: WorkshopMemory;
   /** Row ids currently pending (being remounted). */
   pendingRowIds: ReadonlySet<string>;
@@ -75,9 +73,9 @@ export interface BuildSectionsInput {
  * Build the table sections. One row per *wiring*: a plug wired (live or
  * remembered) to the host and to an SDK slot yields two rows, one per
  * section, each with its own toggle. A channel that isn't live renders as a
- * disconnected row whose identity is remembered → declared → host; a plug
- * with no identity at all is a disconnected host row. Sections with no rows
- * are omitted; rows sort by SDK name then plug name.
+ * disconnected row whose identity is remembered → host; a plug with no
+ * identity at all is a disconnected host row. Sections with no rows are
+ * omitted; rows sort by SDK name then plug name.
  */
 export function buildSections(input: BuildSectionsInput): MountSection[] {
   const { snapshot } = input;
@@ -98,32 +96,24 @@ export function buildSections(input: BuildSectionsInput): MountSection[] {
       plug: plugInfo.plug,
     };
     const remembered: RememberedWiring = input.memory[key] ?? {};
-    const declared = input.declared.find(
-      (pairing) => pairing.plug.sdk === plug.sdk && pairing.plug.name === plug.plug,
-    );
-    const declaredSlot = declared
-      ? makeSlotRef(input.projectId, input.workshop, declared.slot.sdk, declared.slot.name)
-      : undefined;
 
     const establishedFor = (host: boolean): ConnectionEntry | undefined =>
       snapshot.established.find((e) => plugKey(e.plug) === key && isHostSlot(e.slot) === host);
     const undesiredFor = (host: boolean): ConnectionEntry | undefined =>
       snapshot.undesired.find((e) => plugKey(e.plug) === key && isHostSlot(e.slot) === host);
 
-    // SDK (Workshop-section) channel: live → remembered → declared.
+    // SDK (Workshop-section) channel: live → remembered.
     const sdkLive = establishedFor(false);
     const sdkSlot = sdkLive?.slot
       ?? undesiredFor(false)?.slot
-      ?? remembered.sdk?.slot
-      ?? (declaredSlot && !isHostSlot(declaredSlot) ? declaredSlot : undefined);
+      ?? remembered.sdk?.slot;
 
-    // Host channel: live → remembered → declared-host → default (a plug with
-    // no other identity is a host row).
+    // Host channel: live → remembered → default (a plug with no other
+    // identity is a host row).
     const hostLive = establishedFor(true);
     const hostSlot = hostLive?.slot
       ?? undesiredFor(true)?.slot
       ?? remembered.host?.slot
-      ?? (declaredSlot && isHostSlot(declaredSlot) ? declaredSlot : undefined)
       ?? (sdkSlot === undefined
         ? makeSlotRef(input.projectId, input.workshop, SYSTEM_SDK, 'mount')
         : undefined);
@@ -249,33 +239,16 @@ export function sdkSlotCandidates(snapshot: ConnectionsSnapshot): SlotInfo[] {
 
 /**
  * The target offered by the "Can't establish the connection" modal after a
- * connect failed: the declared slot when it exists, is live, and is not the
- * pairing that just failed — otherwise the host. When no target *different
- * from the failed one* exists, returns undefined and the modal is skipped.
+ * connect failed: the host, unless the host itself is the pairing that just
+ * failed — in which case there is no different target to offer and the modal
+ * is skipped (returns undefined).
  */
 export function fallbackTarget(
   failed: SlotRef,
   plug: PlugRef,
-  declared: DeclaredPairing[],
-  snapshot: ConnectionsSnapshot,
 ): SlotRef | undefined {
-  const failedKey = slotKey(failed);
-  const pairing = declared.find(
-    (candidate) => candidate.plug.sdk === plug.sdk && candidate.plug.name === plug.plug,
-  );
-  if (pairing) {
-    const declaredRef = makeSlotRef(
-      plug['project-id'],
-      plug.workshop,
-      pairing.slot.sdk,
-      pairing.slot.name,
-    );
-    if (slotKey(declaredRef) !== failedKey && findSlot(snapshot, declaredRef) !== undefined) {
-      return declaredRef;
-    }
-  }
   const host = makeSlotRef(plug['project-id'], plug.workshop, SYSTEM_SDK, 'mount');
-  return slotKey(host) !== failedKey ? host : undefined;
+  return slotKey(host) !== slotKey(failed) ? host : undefined;
 }
 
 /**

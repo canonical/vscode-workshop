@@ -13,7 +13,7 @@ import { isDeepStrictEqual } from 'node:util';
  * Mount wiring memory — the ONE piece of daemon-derived state this extension
  * persists across sessions (sanctioned exception to the stateless-client
  * rule). It is what lets a disconnected row keep its pairing identity
- * (remembered → declared → host) and keep showing its last host path.
+ * (remembered → host) and keep showing its last host path.
  *
  * Key scheme and invalidation contract: each workshop's wirings live under
  * their own globalState key, `workshop.mountWirings/<projectId>/<workshop>`
