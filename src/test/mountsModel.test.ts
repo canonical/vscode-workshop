@@ -8,7 +8,6 @@ import {
   sdkSlotCandidates,
   shortenHostPath,
 } from '../mounts/model';
-import { WorkshopMemory } from '../mounts/memory';
 
 const P = 'p1';
 const W = 'dev';
@@ -30,7 +29,6 @@ function snapshot(parts: Partial<ConnectionsSnapshot>): ConnectionsSnapshot {
 function build(overrides: {
   snapshot: ConnectionsSnapshot;
   mounts?: Record<string, { hostSource: string; workshopTarget?: string }>;
-  memory?: WorkshopMemory;
   pendingRowIds?: Set<string>;
 }) {
   return buildSections({
@@ -38,7 +36,6 @@ function build(overrides: {
     workshop: W,
     snapshot: overrides.snapshot,
     mounts: overrides.mounts ?? {},
-    memory: overrides.memory ?? {},
     pendingRowIds: overrides.pendingRowIds ?? new Set(),
   });
 }
@@ -100,7 +97,7 @@ suite('buildSections', () => {
     assert.deepStrictEqual(internal.menu, [], 'internal mounts are never remountable');
   });
 
-  test('a plug with no live or remembered pairing is a disconnected host row', () => {
+  test('a plug with no live or disconnected pairing is a disconnected host row', () => {
     const sections = build({
       snapshot: snapshot({
         plugs: [{ ...plugRef('uv', 'cache'), attrs: { 'workshop-target': '/home/workshop/.cache/uv' } }],
@@ -117,53 +114,39 @@ suite('buildSections', () => {
     assert.deepStrictEqual(row.menu, []);
   });
 
-  test('a remembered SDK pairing keeps a disconnected plug internal', () => {
-    const memory: WorkshopMemory = {
-      'jupyter:venv': { sdk: { slot: slotRef('uv', 'venv'), source: '/home/workshop/uv-venv' } },
-    };
+  test('an undesired pairing is a disconnected internal row that keeps identity, section and source', () => {
     const sections = build({
       snapshot: snapshot({
+        undesired: [{
+          plug: plugRef('jupyter', 'venv'),
+          slot: slotRef('uv', 'venv'),
+          'slot-attrs': { 'workshop-source': '/home/workshop/uv-venv' },
+        }],
         plugs: [{ ...plugRef('jupyter', 'venv') }],
         slots: [{ ...HOST_SLOT }, { ...slotRef('uv', 'venv') }],
       }),
-      memory,
     });
 
     const row = sections[0].rows[0];
-    assert.strictEqual(sections[0].id, 'workshop', 'remembered SDK pairing keeps it internal');
-    assert.deepStrictEqual(row.slot, slotRef('uv', 'venv'));
-    assert.strictEqual(row.source, '/home/workshop/uv-venv', 'source kept from memory');
+    assert.strictEqual(sections[0].id, 'workshop', 'disconnected SDK pairing stays internal');
     assert.strictEqual(row.connected, false);
+    assert.deepStrictEqual(row.slot, slotRef('uv', 'venv'));
+    assert.strictEqual(row.source, '/home/workshop/uv-venv', 'source from undesired slot-attrs');
     assert.deepStrictEqual(row.menu, ['connect-to-sdk'], 'SDK slots exist');
   });
 
-  test('an undesired pairing is a disconnected row that keeps its identity and section', () => {
-    const sections = build({
-      snapshot: snapshot({
-        undesired: [{ plug: plugRef('jupyter', 'venv'), slot: slotRef('uv', 'venv') }],
-        plugs: [{ ...plugRef('jupyter', 'venv') }],
-        slots: [{ ...HOST_SLOT }, { ...slotRef('uv', 'venv') }],
-      }),
-    });
-
-    assert.strictEqual(sections[0].id, 'workshop');
-    assert.strictEqual(sections[0].rows[0].connected, false);
-    assert.deepStrictEqual(sections[0].rows[0].slot, slotRef('uv', 'venv'));
-  });
-
   test('dual wiring: host + SDK wirings of one plug are two independent rows (AC 13)', () => {
-    const memory: WorkshopMemory = {
-      'jupyter:venv': {
-        host: { slot: HOST_SLOT, source: '/data/id/86e64b3e/dev/mount/jupyter/venv' },
-      },
-    };
     const sections = build({
       snapshot: snapshot({
         established: [{ plug: plugRef('jupyter', 'venv'), slot: slotRef('uv', 'venv') }],
+        undesired: [{
+          plug: plugRef('jupyter', 'venv'),
+          slot: HOST_SLOT,
+          'slot-attrs': { 'host-source': '/data/id/86e64b3e/dev/mount/jupyter/venv' },
+        }],
         plugs: [{ ...plugRef('jupyter', 'venv') }],
         slots: [{ ...HOST_SLOT }, { ...slotRef('uv', 'venv') }],
       }),
-      memory,
     });
 
     assert.strictEqual(sections.length, 2, 'one row per wiring, each in its own section');
@@ -174,7 +157,7 @@ suite('buildSections', () => {
     assert.strictEqual(
       host.source,
       '/data/id/86e64b3e/dev/mount/jupyter/venv',
-      'disconnected host row keeps its remembered path',
+      'disconnected host row keeps its path from the undesired slot-attrs',
     );
     assert.notStrictEqual(internal.id, host.id);
   });

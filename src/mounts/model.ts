@@ -11,11 +11,10 @@ import {
   slotKey,
   SYSTEM_SDK,
 } from '../api/connections';
-import { RememberedWiring, WorkshopMemory } from './memory';
 
 /**
- * Pure view-model for the Mounts table: turns one poll's daemon state plus
- * the wiring memory into renderable sections and rows. No vscode imports.
+ * Pure view-model for the Mounts table: turns one poll's daemon state into
+ * renderable sections and rows. No vscode imports.
  */
 
 /** One row of the Mounts table — one *wiring* of a plug. */
@@ -64,18 +63,16 @@ export interface BuildSectionsInput {
    * daemon-derived auto path (established mounts only).
    */
   mounts: HostMounts;
-  memory: WorkshopMemory;
   /** Row ids currently pending (being remounted). */
   pendingRowIds: ReadonlySet<string>;
 }
 
 /**
- * Build the table sections. One row per *wiring*: a plug wired (live or
- * remembered) to the host and to an SDK slot yields two rows, one per
- * section, each with its own toggle. A channel that isn't live renders as a
- * disconnected row whose identity is remembered → host; a plug with no
- * identity at all is a disconnected host row. Sections with no rows are
- * omitted; rows sort by SDK name then plug name.
+ * Build the table sections. One row per *wiring*: a plug wired to the host
+ * and to an SDK slot (each live, or disconnected-with-identity the daemon
+ * still reports as `undesired`) yields two rows, one per section, each with
+ * its own toggle. A plug with no identity at all is a disconnected host row.
+ * Sections with no rows are omitted; rows sort by SDK name then plug name.
  */
 export function buildSections(input: BuildSectionsInput): MountSection[] {
   const { snapshot } = input;
@@ -95,25 +92,23 @@ export function buildSections(input: BuildSectionsInput): MountSection[] {
       sdk: plugInfo.sdk,
       plug: plugInfo.plug,
     };
-    const remembered: RememberedWiring = input.memory[key] ?? {};
 
     const establishedFor = (host: boolean): ConnectionEntry | undefined =>
       snapshot.established.find((e) => plugKey(e.plug) === key && isHostSlot(e.slot) === host);
     const undesiredFor = (host: boolean): ConnectionEntry | undefined =>
       snapshot.undesired.find((e) => plugKey(e.plug) === key && isHostSlot(e.slot) === host);
 
-    // SDK (Workshop-section) channel: live → remembered.
+    // SDK (Workshop-section) channel: live → disconnected-with-identity.
     const sdkLive = establishedFor(false);
-    const sdkSlot = sdkLive?.slot
-      ?? undesiredFor(false)?.slot
-      ?? remembered.sdk?.slot;
+    const sdkUndesired = undesiredFor(false);
+    const sdkSlot = sdkLive?.slot ?? sdkUndesired?.slot;
 
-    // Host channel: live → remembered → default (a plug with no other
-    // identity is a host row).
+    // Host channel: live → disconnected-with-identity → default (a plug with
+    // no other identity is a host row).
     const hostLive = establishedFor(true);
+    const hostUndesired = undesiredFor(true);
     const hostSlot = hostLive?.slot
-      ?? undesiredFor(true)?.slot
-      ?? remembered.host?.slot
+      ?? hostUndesired?.slot
       ?? (sdkSlot === undefined
         ? makeSlotRef(input.projectId, input.workshop, SYSTEM_SDK, 'mount')
         : undefined);
@@ -124,7 +119,7 @@ export function buildSections(input: BuildSectionsInput): MountSection[] {
     if (sdkSlot !== undefined) {
       const connected = sdkLive !== undefined;
       const source = attrString(sdkLive?.['slot-attrs'], 'workshop-source')
-        ?? remembered.sdk?.source
+        ?? attrString(sdkUndesired?.['slot-attrs'], 'workshop-source')
         ?? attrString(findSlot(snapshot, sdkSlot)?.attrs, 'workshop-source');
       workshopRows.push(makeRow(input, {
         section: 'workshop',
@@ -142,7 +137,7 @@ export function buildSections(input: BuildSectionsInput): MountSection[] {
       const connected = hostLive !== undefined;
       const source = input.mounts[key]?.hostSource
         ?? attrString(hostLive?.['slot-attrs'], 'host-source')
-        ?? remembered.host?.source;
+        ?? attrString(hostUndesired?.['slot-attrs'], 'host-source');
       hostRows.push(makeRow(input, {
         section: 'host',
         plug,
