@@ -4,7 +4,6 @@ import { Change, WorkshopApiError, WorkshopsResponse, WorkshopInfo } from '../ap
 import { ConnectionsSnapshot } from '../api/connections';
 import { fetchPanelData, MountsClient, MountsDataDeps } from '../mounts/data';
 import { InflightTracker } from '../mounts/inflight';
-import { MementoLike, memoryKey, readWorkshopMemory } from '../mounts/memory';
 import {
   MSG_LOADING,
   MSG_NO_SELECTION,
@@ -15,27 +14,6 @@ import {
 } from '../mounts/panelState';
 
 const P = 'p1';
-
-class MemoryMemento implements MementoLike {
-  private readonly store = new Map<string, unknown>();
-
-  get<T>(key: string): T | undefined {
-    return this.store.get(key) as T | undefined;
-  }
-
-  update(key: string, value: unknown): Thenable<void> {
-    if (value === undefined) {
-      this.store.delete(key);
-    } else {
-      this.store.set(key, value);
-    }
-    return Promise.resolve();
-  }
-
-  keys(): readonly string[] {
-    return [...this.store.keys()];
-  }
-}
 
 function plugRef(workshop: string, sdk: string, name: string) {
   return { 'project-id': P, workshop, sdk, plug: name };
@@ -95,21 +73,17 @@ class StubClient implements MountsClient {
 function makeDeps(config: StubConfig, overrides?: Partial<MountsDataDeps>): {
   deps: MountsDataDeps;
   client: StubClient;
-  memento: MemoryMemento;
   inflight: InflightTracker;
 } {
   const client = new StubClient(config);
-  const memento = new MemoryMemento();
   const inflight = new InflightTracker();
   return {
     deps: {
       client,
-      memento,
       inflight,
       ...overrides,
     },
     client,
-    memento,
     inflight,
   };
 }
@@ -149,8 +123,8 @@ const DEV_SNAPSHOT: ConnectionsSnapshot = {
 };
 
 suite('fetchPanelData', () => {
-  test('a launched workshop yields the table and remembers live pairings', async () => {
-    const { deps, memento } = makeDeps({
+  test('a launched workshop yields the table', async () => {
+    const { deps } = makeDeps({
       response: DEV_READY,
       details: { dev: DEV_DETAIL },
       connections: { dev: DEV_SNAPSHOT },
@@ -165,11 +139,6 @@ suite('fetchPanelData', () => {
       assert.strictEqual(row.source, '/data/id/12345678/dev/mount/node/npm-cache');
       assert.strictEqual(row.sourceDisplay, '…/12345678/dev/mount/node/npm-cache');
     }
-    // The live pairing (which could equally come from the CLI) is remembered.
-    assert.strictEqual(
-      readWorkshopMemory(memento, P, 'dev')['node:npm-cache'].host?.source,
-      '/data/id/12345678/dev/mount/node/npm-cache',
-    );
   });
 
   test('no workshops → the no-workshops message', async () => {
@@ -269,25 +238,5 @@ suite('fetchPanelData', () => {
     const data = await fetchPanelData(deps, P, 'dev');
     assert.deepStrictEqual(data.body, { kind: 'message', text: pendingMessage('remount') });
     assert.ok(!client.calls.some((c) => c.startsWith('listChanges')), 'no change matching needed');
-  });
-
-  test('pruning follows container existence: stopped keeps memory, off loses it', async () => {
-    const { deps, memento } = makeDeps({
-      response: {
-        workshops: [
-          { 'project-id': P, name: 'stopped-one', status: 'stopped' },
-          { 'project-id': P, name: 'off-one', status: 'off' },
-        ],
-      },
-      details: {},
-      connections: {},
-    });
-    await memento.update(memoryKey(P, 'stopped-one'), { 'a:b': {} });
-    await memento.update(memoryKey(P, 'off-one'), { 'a:b': {} });
-    await memento.update(memoryKey(P, 'gone-one'), { 'a:b': {} });
-
-    await fetchPanelData(deps, P, 'stopped-one');
-
-    assert.deepStrictEqual([...memento.keys()], [memoryKey(P, 'stopped-one')]);
   });
 });

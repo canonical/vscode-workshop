@@ -5,10 +5,9 @@ import {
   WorkshopInfo,
 } from '../api/client';
 import { plugKey } from '../api/connections';
-import { isBuilt, mergeWorkshops, Workshop } from '../api/workshops';
+import { mergeWorkshops, Workshop } from '../api/workshops';
 import { InflightTracker } from './inflight';
 import { HostMounts, buildSections } from './model';
-import { MementoLike, pruneMemory, rememberLivePairings } from './memory';
 import {
   derivePanelState,
   MSG_NO_SELECTION,
@@ -31,7 +30,6 @@ export type MountsClient = Pick<
 
 export interface MountsDataDeps {
   client: MountsClient;
-  memento: MementoLike;
   inflight: InflightTracker;
 }
 
@@ -66,12 +64,6 @@ export async function fetchPanelData(
 ): Promise<PanelData> {
   const workshops = mergeWorkshops(await deps.client.listWorkshops(projectId), projectId);
   const names = workshops.map((workshop) => workshop.name);
-
-  await pruneMemory(
-    deps.memento,
-    projectId,
-    workshops.filter(isBuilt).map((workshop) => workshop.name),
-  );
 
   if (names.length === 0) {
     return { body: { kind: 'message', text: MSG_NO_WORKSHOPS } };
@@ -171,13 +163,9 @@ async function fetchLiveState(
   }
 
   const hostMounts: HostMounts = {};
-  const hostSources: Record<string, string> = {};
   for (const sdk of detail.sdks ?? []) {
     for (const mount of sdk.mounts ?? []) {
       const key = plugKey(mount.plug);
-      if (mount['host-source'] !== undefined) {
-        hostSources[key] = mount['host-source'];
-      }
       hostMounts[key] = {
         hostSource: mount['host-source'],
         workshopTarget: mount['workshop-target'],
@@ -185,21 +173,12 @@ async function fetchLiveState(
     }
   }
 
-  const memory = await rememberLivePairings(
-    deps.memento,
-    projectId,
-    workshop.name,
-    snapshot,
-    hostSources,
-  );
-
   return {
     sections: buildSections({
       projectId,
       workshop: workshop.name,
       snapshot,
       mounts: hostMounts,
-      memory,
       pendingRowIds: deps.inflight.pendingRowIds(),
     }),
   };
