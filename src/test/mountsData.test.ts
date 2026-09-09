@@ -106,9 +106,6 @@ function makeDeps(config: StubConfig, overrides?: Partial<MountsDataDeps>): {
       client,
       memento,
       inflight,
-      readFile: async () => {
-        throw new Error('no definition');
-      },
       ...overrides,
     },
     client,
@@ -173,28 +170,6 @@ suite('fetchPanelData', () => {
       readWorkshopMemory(memento, P, 'dev')['node:npm-cache'].host?.source,
       '/data/id/12345678/dev/mount/node/npm-cache',
     );
-  });
-
-  test('declared connections are re-read from the definition every tick', async () => {
-    let reads = 0;
-    const { deps } = makeDeps(
-      {
-        response: DEV_READY,
-        details: { dev: DEV_DETAIL },
-        connections: { dev: DEV_SNAPSHOT },
-      },
-      {
-        readFile: async (filePath: string) => {
-          reads += 1;
-          assert.strictEqual(filePath, '/defs/dev.yaml');
-          return 'connections: []';
-        },
-      },
-    );
-
-    await fetchPanelData(deps, P, 'dev');
-    await fetchPanelData(deps, P, 'dev');
-    assert.strictEqual(reads, 2, 'no caching of the definition YAML');
   });
 
   test('no workshops → the no-workshops message', async () => {
