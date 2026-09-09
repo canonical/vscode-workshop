@@ -2,6 +2,13 @@ import * as fs from 'fs';
 import * as http from 'http';
 import * as path from 'path';
 
+import {
+  ConnectionsSnapshot,
+  normalizeConnections,
+  PlugRef,
+  SlotRef,
+} from './connections';
+
 /**
  * Minimal client for the `workshopd` daemon REST API, spoken over its Unix
  * domain socket. Mirrors the subset of `canonical/workshop`'s Go client this
@@ -33,6 +40,18 @@ export interface StoreAccount {
   validation?: string;
 }
 
+/**
+ * One established mount of an SDK, from the single-workshop detail's
+ * `sdks[].mounts`. Authoritative for host paths — `host-source` carries the
+ * daemon-derived auto path too — but lists established mounts only.
+ */
+export interface SdkMount {
+  plug: PlugRef;
+  'host-source'?: string;
+  'workshop-source'?: string;
+  'workshop-target'?: string;
+}
+
 export interface SdkInfo {
   name: string;
   version?: string;
@@ -44,6 +63,8 @@ export interface SdkInfo {
   'built-at'?: string;
   'installed-at'?: string;
   'health-check'?: HealthCheckInfo;
+  /** Present on the single-workshop detail; `null` when the SDK has none. */
+  mounts?: SdkMount[] | null;
 }
 
 export interface SdkFullInfo {
@@ -145,6 +166,23 @@ export class WorkshopApiError extends Error {
     super(message);
     this.name = 'WorkshopApiError';
   }
+}
+
+/**
+ * Whether an error is the daemon's "one change per workshop at a time"
+ * rejection. The `change-conflict` error kind is only attached by the
+ * workshops endpoint; `POST /v1/connections` and `POST .../mounts` reject
+ * conflicts as a plain 400 whose message is
+ * `workshop "<name>" has "<kind>" change in progress` (upstream
+ * `conflict.go` / `healthstate.go`, both `%q`-quoted) — hence the isolated
+ * message match here, the one place allowed to string-match this error.
+ */
+export function isChangeConflict(err: unknown): boolean {
+  if (!(err instanceof WorkshopApiError)) {
+    return false;
+  }
+  return err.kind === 'change-conflict'
+    || /workshop "[^"]*" has "[^"]*" change in progress/.test(err.message);
 }
 
 /**
@@ -377,6 +415,93 @@ export class WorkshopClient {
       `/v1/changes/${encodeURIComponent(changeId)}${query}`,
     );
     return result as Change;
+  }
+
+  /**
+   * Fetch a workshop's connection state for one interface.
+   * `GET /v1/connections?project-id=…&workshop=…&interface=…&select=all`
+   *
+   * Always sent with `select=all` so disconnected plugs and slots are listed
+   * too (the daemon accepts only `select=all` or no `select`; `project-id`
+   * is mandatory). The raw result is funneled through
+   * {@link normalizeConnections}.
+   */
+  async getConnections(
+    projectId: string,
+    workshop: string,
+    iface = 'mount',
+  ): Promise<ConnectionsSnapshot> {
+    const query = new URLSearchParams({
+      'project-id': projectId,
+      workshop,
+      interface: iface,
+      select: 'all',
+    });
+    const result = await this.request('GET', `/v1/connections?${query.toString()}`);
+    return normalizeConnections(result);
+  }
+
+  /**
+   * Connect or disconnect exactly one plug/slot pair and wait for the change
+   * to complete. The daemon 501s many-to-many operations, so this API takes
+   * a single pair by construction. `forget` is sent only when true: a plain
+   * disconnect leaves the pairing as `undesired`, while forget drops it from
+   * the daemon's memory entirely.
+   */
+  async connectionsAction(
+    action: 'connect' | 'disconnect',
+    plug: PlugRef,
+    slot: SlotRef,
+    options?: { forget?: boolean },
+  ): Promise<Change> {
+    const body: Record<string, unknown> = { action, plugs: [plug], slots: [slot] };
+    if (options?.forget === true) {
+      body.forget = true;
+    }
+    const { change } = await this.postAsync('/v1/connections', body);
+    return this.waitChange(change);
+  }
+
+  /**
+   * Remount a connected host mount plug onto a new absolute host directory
+   * and wait for the change to complete.
+   * `POST /v1/projects/<id>/workshops/<name>/mounts`
+   */
+  async remountPlug(
+    projectId: string,
+    workshop: string,
+    plug: PlugRef,
+    hostSource: string,
+  ): Promise<Change> {
+    const { change } = await this.postAsync(
+      `/v1/projects/${encodeURIComponent(projectId)}/workshops/${encodeURIComponent(workshop)}/mounts`,
+      { action: 'remount', plug, 'host-source': hostSource },
+    );
+    return this.waitChange(change);
+  }
+
+  /**
+   * List changes, optionally filtered. `GET /v1/changes?select=…&project-id=…`
+   *
+   * Deliberately never passes the `workshops` query filter: it matches a
+   * change-level `workshop` field that no change kind ever sets (the daemon
+   * only sets `workshop` on tasks), so it filters everything out. Callers
+   * match the workshop client-side against change/task summaries.
+   */
+  async listChanges(options?: {
+    select?: 'all' | 'in-progress' | 'ready';
+    projectId?: string;
+  }): Promise<Change[]> {
+    const query = new URLSearchParams();
+    if (options?.select !== undefined) {
+      query.set('select', options.select);
+    }
+    if (options?.projectId !== undefined) {
+      query.set('project-id', options.projectId);
+    }
+    const suffix = query.size > 0 ? `?${query.toString()}` : '';
+    const result = await this.request('GET', `/v1/changes${suffix}`);
+    return Array.isArray(result) ? (result as Change[]) : [];
   }
 
   /** Wait for a change to finish and return it, throwing if it errored. */
