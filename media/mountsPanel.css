@@ -1,0 +1,181 @@
+/*
+ * Workshop panel (Mounts tab) styling. Draws every colour from VS Code theme
+ * variables so the panel adapts to the user's light/dark/high-contrast theme
+ * and inherits VS Code's accessibility-tuned contrast. Each var carries a
+ * fallback chain for themes that don't define it.
+ *
+ * Taken from the reference stylesheet (docs/reference/interfacesPanel.css);
+ * rules for the deferred Tunnels/Devices tables and header tooltips are left out.
+ */
+:root {
+  --text: var(--vscode-foreground);
+  --muted: var(--vscode-descriptionForeground, var(--vscode-foreground));
+  --border: var(--vscode-panel-border, var(--vscode-editorWidget-border, var(--vscode-widget-border, rgba(128, 128, 128, .35))));
+  --hover: var(--vscode-list-hoverBackground, rgba(128, 128, 128, .1));
+  --subtle-bg: var(--vscode-editorWidget-background, rgba(128, 128, 128, .04));
+
+  --blue: var(--vscode-charts-blue, var(--vscode-textLink-foreground, #0078d4));
+  --link: var(--vscode-textLink-foreground);
+
+  --font: var(--vscode-font-family, system-ui, sans-serif);
+  --mono: var(--vscode-editor-font-family, ui-monospace, monospace);
+  --font-size: var(--vscode-font-size, 13px);
+}
+
+* { box-sizing: border-box; }
+
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  padding: 0;
+  color: var(--text);
+  background: var(--vscode-panel-background, transparent);
+  font-family: var(--font);
+  font-size: var(--font-size);
+}
+
+/* Tab bar */
+.tabs {
+  display: flex; align-items: flex-end;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--border);
+}
+.tab {
+  padding: 10px 16px;
+  margin-bottom: -1px;
+  font-family: var(--font);
+  font-size: 12px; font-weight: 500;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--vscode-panelTitle-inactiveForeground, var(--muted));
+  transition: color .12s;
+}
+.tab:hover { color: var(--vscode-panelTitle-activeForeground, var(--text)); }
+.tab.active {
+  color: var(--vscode-panelTitle-activeForeground, var(--text));
+  border-bottom-color: var(--vscode-panelTitle-activeBorder, var(--vscode-focusBorder));
+}
+.tab:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+
+/* Content area */
+#content {
+  padding: 20px;
+  max-width: 72rem;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.empty {
+  padding: 32px 12px; text-align: center; color: var(--muted); font-style: italic; font-size: 12px;
+}
+
+/* ── Section title / table card ─────────────────────────────────────────── */
+/* Static section title (Workshop, Host to Workshop) — a plain uppercase label. */
+.section-title { display: flex; align-items: center; padding: 2px 2px 10px; }
+.acc-label { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text); }
+
+/* A bordered table with no accordion. */
+.card-table { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+
+/* Column-header row + data rows share a grid template. */
+.thead, .trow { display: grid; align-items: start; padding: 0 16px; }
+.thead {
+  padding-top: 8px; padding-bottom: 8px;
+  background: var(--subtle-bg);
+  border-bottom: 1px solid var(--border);
+}
+.trow {
+  padding-top: 12px; padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+  transition: background .12s;
+}
+.trow:last-child { border-bottom: none; }
+.trow:hover { background: var(--hover); }
+.trow:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+
+/* Every data column flexes with the panel width; only the icon-only action
+   column stays fixed. The first two columns carry twice the weight (2fr) so they
+   remain the dominant flexible pair, while Status uses minmax() to keep a
+   readable floor before it too grows. */
+.mounts .thead, .mounts .trow { grid-template-columns: 2fr 2fr minmax(110px, 1fr) 36px; }
+
+.th { font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+
+.cell { min-width: 0; padding-right: 24px; }
+.cell:last-child { padding-right: 0; }
+.val { font-size: 12px; color: var(--text); overflow-wrap: anywhere; }
+.val.dash { color: var(--muted); }
+.sub { font-size: 11px; color: var(--muted); margin-top: 3px; overflow-wrap: anywhere; }
+.mono { font-family: var(--mono); }
+a.link { color: var(--link); text-decoration: none; cursor: pointer; }
+a.link:hover { text-decoration: underline; }
+a.link:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+
+/* Status column control. Rows align to the top, so the control centres itself. */
+.statusc { display: flex; align-items: center; min-height: 20px; }
+
+/* Status toggle — a pill switch. On (connected) fills with VS Code's blue; off
+   is a muted track. The thumb carries a check (on) or ✕ (off) glyph. */
+.switch {
+  position: relative; width: 40px; height: 22px; padding: 0; flex: none;
+  border: 1px solid var(--border); border-radius: 999px; cursor: pointer;
+  background: var(--vscode-checkbox-background, var(--subtle-bg));
+  transition: background .12s, border-color .12s;
+}
+.switch-thumb {
+  position: absolute; top: 50%; left: 3px; transform: translateY(-50%);
+  width: 16px; height: 16px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--vscode-checkbox-foreground, var(--muted));
+  color: var(--vscode-checkbox-background, var(--subtle-bg));
+  transition: left .12s, background .12s, color .12s;
+}
+.switch-thumb svg { width: 11px; height: 11px; }
+/* On (connected) fills with the recognizable VS Code blue (charts blue → link
+   blue → the classic #0078d4), not the theme's button accent, which is purple
+   in many themes. The white thumb + blue glyph keep contrast in light and dark. */
+.switch[aria-checked="true"] {
+  background: var(--blue);
+  border-color: var(--blue);
+}
+.switch[aria-checked="true"] .switch-thumb {
+  left: calc(100% - 19px);
+  background: #fff;
+  color: var(--blue);
+}
+.switch:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+/* While the row is being remounted. */
+.switch[disabled] { opacity: .5; cursor: default; }
+
+/* Row action (⋯) — always visible so the menu is discoverable. */
+.actc { display: flex; justify-content: center; }
+.act {
+  width: 24px; height: 24px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; border-radius: 4px; background: transparent; cursor: pointer;
+  color: var(--muted);
+  opacity: 1; transition: background .12s, color .12s;
+}
+.act:hover { background: var(--hover); color: var(--text); }
+.act:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+
+/* Context menu */
+.ctxmenu {
+  position: fixed; z-index: 100; display: none; min-width: 150px; padding: 4px 0;
+  background: var(--vscode-menu-background, var(--vscode-editorWidget-background));
+  color: var(--vscode-menu-foreground, var(--text));
+  border: 1px solid var(--vscode-menu-border, var(--border));
+  border-radius: 5px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .36);
+}
+.ctxmenu.show { display: block; }
+.ctxmenu .mi { padding: 5px 26px 5px 14px; cursor: pointer; white-space: nowrap; font-size: 12px; outline: none; }
+.ctxmenu .mi:hover, .ctxmenu .mi:focus {
+  background: var(--vscode-menu-selectionBackground, var(--hover));
+  color: var(--vscode-menu-selectionForeground, var(--text));
+}
