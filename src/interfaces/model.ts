@@ -74,7 +74,6 @@ export interface BuildSectionsInput {
  */
 export function buildSections(input: BuildSectionsInput): MountSection[] {
   const { snapshot } = input;
-  const candidates = sdkSlotCandidates(snapshot);
   const workshopRows: MountRow[] = [];
   const hostRows: MountRow[] = [];
   // Plugs that already have a connection row; a plug with none becomes a
@@ -84,6 +83,9 @@ export function buildSections(input: BuildSectionsInput): MountSection[] {
   const addConnectionRow = (entry: ConnectionEntry, connected: boolean): void => {
     const key = plugKey(entry.plug);
     connectedPlugs.add(key);
+    // Connect to SDK offers only slots on this plug's own interface — a plug
+    // and slot must share an interface to be connectable.
+    const candidates = sdkSlotCandidates(snapshot, entry.interface);
     const target = attrString(entry['plug-attrs'], 'workshop-target')
       ?? attrString(findPlug(snapshot, entry.plug)?.attrs, 'workshop-target')
       ?? input.mounts[key]?.workshopTarget;
@@ -133,6 +135,7 @@ export function buildSections(input: BuildSectionsInput): MountSection[] {
     if (connectedPlugs.has(key)) {
       continue;
     }
+    const candidates = sdkSlotCandidates(snapshot, plugInfo.interface);
     const source = input.mounts[key]?.hostSource;
     hostRows.push(makeRow({
       section: 'host',
@@ -228,13 +231,17 @@ function findPlug(snapshot: ConnectionsSnapshot, ref: PlugRef): PlugInfo | undef
 }
 
 /**
- * SDK-provided mount slots a plug could be wired to: every non-`system`
- * slot in the snapshot ("a compatible SDK slot exists = at least one mount
- * slot on a non-system SDK"). Sorted by SDK then slot name.
+ * SDK-provided mount slots a plug on `iface` could be wired to: every
+ * non-`system` slot on the *same* interface ("a compatible SDK slot exists =
+ * at least one mount slot on a non-system SDK"). A plug and slot must share an
+ * interface to be connectable. Sorted by SDK then slot name.
  */
-export function sdkSlotCandidates(snapshot: ConnectionsSnapshot): SlotInfo[] {
+export function sdkSlotCandidates(
+  snapshot: ConnectionsSnapshot,
+  iface: string | undefined,
+): SlotInfo[] {
   return snapshot.slots
-    .filter((slot) => !isHostSlot(slot))
+    .filter((slot) => !isHostSlot(slot) && slot.interface === iface)
     .sort((a, b) => a.sdk.localeCompare(b.sdk) || a.slot.localeCompare(b.slot));
 }
 
