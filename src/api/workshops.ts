@@ -68,6 +68,17 @@ export interface Workshop {
 export type ReopenAction = 'connect' | 'start' | 'launch';
 
 /**
+ * Whether the workshop's container exists — running, pending, waiting, or
+ * merely stopped. Derived from the raw daemon status because the display
+ * {@link Status} collapses raw `stopped` and `off` into `Off`: a stopped
+ * workshop still has its container (and must e.g. keep its mount wiring
+ * memory), while raw `off` / definition-only means the container is gone.
+ */
+export function isBuilt(workshop: Workshop): boolean {
+  return workshop.rawStatus !== undefined && workshop.rawStatus.toLowerCase() !== 'off';
+}
+
+/**
  * Return true when a "Refresh and reopen" offer makes sense for this workshop.
  * Only workshops that are already built (running or stopped) can be refreshed;
  * definition-only (never launched) workshops need a full `launch` instead.
