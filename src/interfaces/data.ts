@@ -1,5 +1,4 @@
 import {
-  Change,
   WorkshopApiError,
   WorkshopClient,
   WorkshopInfo,
@@ -22,7 +21,7 @@ import {
 
 export type MountsClient = Pick<
   WorkshopClient,
-  'getWorkshop' | 'getConnections' | 'listChanges'
+  'getWorkshop' | 'getConnections'
 >;
 
 export interface MountsDataDeps {
@@ -37,20 +36,6 @@ export interface MountsDataDeps {
 export interface PanelData {
   body: PanelState;
 }
-
-/**
- * Change kinds that are row-level operations: the daemon flips the workshop
- * to Pending while they run, but they must keep the table live — never a
- * single-message state.
- */
-export const ROW_OP_KINDS: ReadonlySet<string> = new Set(['connect', 'disconnect', 'remount']);
-
-/**
- * Lifecycle kinds that blank the tab with `<Kind> task in progress…` while
- * they run. Anything else (row ops, exec, unmatched) falls through to the
- * live table / Loading.
- */
-const LIFECYCLE_KINDS: ReadonlySet<string> = new Set(['launch', 'refresh', 'stop', 'remove', 'start']);
 
 /** Fetch one poll's PanelData for the workshop selected in the tree. */
 export async function fetchPanelData(
@@ -84,48 +69,15 @@ async function deriveSelectedBody(
 
   const status = normalizeStatus(detail.status);
 
-  if (status === 'Pending') {
-    const pendingKind = await matchLifecycleChange(deps.client, projectId, workshop);
-    if (pendingKind !== undefined) {
-      return derivePanelState({ status, pendingKind });
-    }
-  }
   if (status === 'Off' || status === 'Error' || status === 'Unknown') {
     return derivePanelState({ status });
   }
 
-  // Launched (On/Waiting), or Pending from a row-op/unmatched change: show
-  // live state so flipping switches never blanks the tab.
+  // Launched or Pending: the workshop endpoint returns mounts for a Pending
+  // workshop too, so there is no task-in-progress message — show live state
+  // (or Loading until its snapshot arrives).
   const sections = await fetchSections(deps, projectId, workshop, detail);
   return derivePanelState({ status, sections });
-}
-
-/**
- * The kind of an in-progress lifecycle change for this workshop, if any.
- * The `?workshops=` filter matches nothing (no change sets a `workshop`
- * field), so the workshop is matched client-side against change/task
- * summaries: the daemon quotes workshop names (`… workshop "dev" …`) and
- * remount summaries use the `<workshop>/<sdk>:<plug>` form.
- */
-async function matchLifecycleChange(
-  client: MountsClient,
-  projectId: string,
-  workshop: string,
-): Promise<string | undefined> {
-  const changes = await client.listChanges({ select: 'in-progress', projectId });
-  const matched = changes.find(
-    (change) => changeMatchesWorkshop(change, workshop) && !ROW_OP_KINDS.has(change.kind),
-  );
-  return matched !== undefined && LIFECYCLE_KINDS.has(matched.kind) ? matched.kind : undefined;
-}
-
-function changeMatchesWorkshop(change: Change, workshop: string): boolean {
-  const quoted = `"${workshop}"`;
-  const slashed = ` ${workshop}/`;
-  const texts = [change.summary, ...(change.tasks ?? []).map((task) => task.summary)];
-  return texts.some(
-    (text) => text !== undefined && (text.includes(quoted) || text.includes(slashed)),
-  );
 }
 
 async function fetchSections(

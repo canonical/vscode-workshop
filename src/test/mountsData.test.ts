@@ -1,13 +1,12 @@
 import * as assert from 'assert';
 
-import { Change, WorkshopApiError, WorkshopInfo } from '../api/client';
+import { WorkshopApiError, WorkshopInfo } from '../api/client';
 import { ConnectionsSnapshot } from '../api/connections';
 import { fetchPanelData, MountsClient, MountsDataDeps } from '../interfaces/data';
 import {
   MSG_LOADING,
   MSG_NO_SELECTION,
   MSG_OFF,
-  pendingMessage,
 } from '../interfaces/panelState';
 
 const P = 'p1';
@@ -23,7 +22,6 @@ function slotRef(workshop: string, sdk: string, name: string) {
 interface StubConfig {
   details?: Record<string, WorkshopInfo | WorkshopApiError>;
   connections?: Record<string, ConnectionsSnapshot | WorkshopApiError>;
-  changes?: Change[];
 }
 
 class StubClient implements MountsClient {
@@ -53,11 +51,6 @@ class StubClient implements MountsClient {
       throw snapshot;
     }
     return snapshot;
-  }
-
-  async listChanges(options?: { select?: string; projectId?: string }): Promise<Change[]> {
-    this.calls.push(`listChanges:${options?.select}:${options?.projectId}`);
-    return this.config.changes ?? [];
   }
 }
 
@@ -146,32 +139,10 @@ suite('fetchPanelData', () => {
     assert.ok(!client.calls.some((c) => c.startsWith('getConnections')));
   });
 
-  test('Pending matched to a lifecycle change blanks the tab with that kind', async () => {
-    const { deps, client } = makeDeps({
-      details: { dev: DEV_PENDING },
-      changes: [{ id: 'c1', kind: 'launch', summary: 'Launch workshop "dev"', status: 'Doing', ready: false }],
-    });
-    const data = await fetchPanelData(deps, P, 'dev');
-    assert.deepStrictEqual(data.body, { kind: 'message', text: pendingMessage('launch') });
-    assert.ok(client.calls.includes(`listChanges:in-progress:${P}`));
-    assert.ok(!client.calls.some((c) => c.startsWith('getConnections')));
-  });
-
-  test('Pending from a row-op keeps the table live (AC 18)', async () => {
+  test('a Pending workshop shows the table (mounts are returned while pending)', async () => {
     const { deps } = makeDeps({
       details: { dev: DEV_PENDING },
       connections: { dev: DEV_SNAPSHOT },
-      changes: [{ id: 'c1', kind: 'disconnect', summary: 'Disconnect dev/node:npm-cache from dev/system:mount', status: 'Doing', ready: false }],
-    });
-    const data = await fetchPanelData(deps, P, 'dev');
-    assert.strictEqual(data.body.kind, 'table', 'row-level changes never blank the tab');
-  });
-
-  test('Pending matching nothing fetches live state rather than fabricating a task', async () => {
-    const { deps } = makeDeps({
-      details: { dev: DEV_PENDING },
-      connections: { dev: DEV_SNAPSHOT },
-      changes: [],
     });
     const data = await fetchPanelData(deps, P, 'dev');
     assert.strictEqual(data.body.kind, 'table');

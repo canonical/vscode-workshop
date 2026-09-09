@@ -8,7 +8,6 @@ import {
   MSG_NO_MOUNTS,
   MSG_NO_WORKSHOPS,
   MSG_OFF,
-  pendingMessage,
 } from '../interfaces/panelState';
 
 function message(text: string) {
@@ -27,33 +26,14 @@ suite('derivePanelState message matrix', () => {
     assert.deepStrictEqual(derivePanelState({}), message(MSG_LOADING));
   });
 
-  test('matched lifecycle Pending → task message with the change kind', () => {
-    for (const kind of ['launch', 'refresh']) {
-      assert.deepStrictEqual(
-        derivePanelState({
-          status: 'Pending',
-          pendingKind: kind,
-          sections: SECTIONS,
-        }),
-        message(pendingMessage(kind)),
-      );
-    }
-    assert.strictEqual(
-      pendingMessage('launch'),
-      'Launch task in progress… Mounts will show when workshop is ready',
-    );
-  });
-
-  test('Pending with a row-level change keeps the table live (no pendingKind set)', () => {
-    // The data layer never sets pendingKind for connect/disconnect/remount;
-    // given that, a Pending workshop with a snapshot renders the table.
+  test('a Pending workshop with a snapshot renders the table (never a task message)', () => {
     assert.deepStrictEqual(
       derivePanelState({ status: 'Pending', sections: SECTIONS }),
       { kind: 'table', sections: SECTIONS },
     );
   });
 
-  test('unmatched Pending with no snapshot yet → Loading, never a fabricated task name', () => {
+  test('a Pending workshop with no snapshot yet → Loading', () => {
     assert.deepStrictEqual(
       derivePanelState({ status: 'Pending' }),
       message(MSG_LOADING),
@@ -95,9 +75,5 @@ suite('derivePanelState message matrix', () => {
     assert.strictEqual(MSG_NO_MOUNTS, 'No mounts');
     assert.strictEqual(MSG_NO_WORKSHOPS, 'No workshops in this project.');
     assert.strictEqual(MSG_DEVICES, 'Devices are coming soon.');
-    assert.strictEqual(
-      pendingMessage('remount'),
-      'Remount task in progress… Mounts will show when workshop is ready',
-    );
   });
 });
