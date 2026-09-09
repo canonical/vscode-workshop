@@ -2,7 +2,7 @@ import * as assert from 'assert';
 
 import { Change, WorkshopApiError, WorkshopsResponse, WorkshopInfo } from '../api/client';
 import { ConnectionsSnapshot } from '../api/connections';
-import { fetchPanelData, MountsClient, MountsDataDeps } from '../mounts/data';
+import { fetchPanelData, MountsClient, MountsDataDeps } from '../interfaces/data';
 import {
   MSG_LOADING,
   MSG_NO_SELECTION,
@@ -10,7 +10,7 @@ import {
   MSG_OFF,
   pendingMessage,
   workshopGoneMessage,
-} from '../mounts/panelState';
+} from '../interfaces/panelState';
 
 const P = 'p1';
 
