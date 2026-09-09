@@ -29,9 +29,6 @@ export type PanelState =
   | { kind: 'table'; sections: MountSection[] };
 
 export interface PanelStateInput {
-  /** Undefined until the first workshop list for this project arrives. */
-  workshops?: readonly string[];
-  selected?: string;
   /** Display status of the selected workshop. */
   status?: Status;
   /**
@@ -46,23 +43,14 @@ export interface PanelStateInput {
 }
 
 /**
- * Ordered guards from the handoff's single-message-state table. Anything
- * that falls through renders the table — including a workshop the daemon
- * reports Pending because of a row-level change.
+ * Ordered guards from the handoff's single-message-state table for the
+ * *selected* workshop (the panel follows the tree selection; there is no
+ * picker). Anything that falls through renders the table — including a
+ * workshop the daemon reports Pending because of a row-level change. The
+ * no-workshops / no-selection / workshop-gone states are decided earlier, in
+ * `fetchPanelData`.
  */
 export function derivePanelState(input: PanelStateInput): PanelState {
-  if (input.workshops === undefined) {
-    return { kind: 'message', text: MSG_LOADING };
-  }
-  if (input.workshops.length === 0) {
-    return { kind: 'message', text: MSG_NO_WORKSHOPS };
-  }
-  if (input.selected === undefined || !input.workshops.includes(input.selected)) {
-    return {
-      kind: 'message',
-      text: input.selected === undefined ? MSG_LOADING : workshopGoneMessage(input.selected),
-    };
-  }
   if (input.pendingKind !== undefined) {
     return { kind: 'message', text: pendingMessage(input.pendingKind) };
   }
