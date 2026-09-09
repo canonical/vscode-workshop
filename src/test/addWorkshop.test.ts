@@ -87,13 +87,12 @@ suite('addWorkshop command', () => {
     wizard?: (deps: WizardDeps) => Promise<WizardResult | undefined>;
     runInit?: (spec: InitSpec) => Promise<unknown>;
   }) {
+    const client = new WorkshopClient({ socketPath: path.join(tmp, 'missing.socket') });
+    const globalState = new MemoryMemento();
     return createWorkshopCommands({
-      client: new WorkshopClient({ socketPath: path.join(tmp, 'missing.socket') }),
-      projects: new ProjectContext(
-        new WorkshopClient({ socketPath: path.join(tmp, 'missing.socket') }),
-        new MemoryMemento(),
-      ),
-      globalState: new MemoryMemento(),
+      client,
+      projects: new ProjectContext(client, globalState),
+      globalState,
       log,
       logsView: new LogsView(),
       workspaceFolders: () => options.folders ?? [{ name: 'proj', path: tmp }],
