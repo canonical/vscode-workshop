@@ -59,6 +59,12 @@ export class ProjectContext {
   private projectId: string | undefined;
   /** Single-flight guard: concurrent resolvers share one POST /v1/projects. */
   private resolving: Promise<string | undefined> | undefined;
+  /**
+   * Bumped by {@link invalidate}. A resolution stores its result only while its
+   * generation is still current, so an {@link invalidate} racing an in-flight
+   * {@link resolveNow} can't let the superseded id be written back afterwards.
+   */
+  private generation = 0;
 
   constructor(
     private readonly client: ProjectResolver,
@@ -78,20 +84,31 @@ export class ProjectContext {
 
   /** Resolve afresh (ignoring any held id) and hold the result. */
   async resolveNow(): Promise<string | undefined> {
-    this.resolving ??= resolveCurrentProjectId(this.client, this.globalState, this.folder())
-      .then((id) => {
-        this.projectId = id;
-        return id;
-      })
-      .finally(() => {
-        this.resolving = undefined;
-      });
+    if (this.resolving === undefined) {
+      const generation = this.generation;
+      const pending = resolveCurrentProjectId(this.client, this.globalState, this.folder())
+        .then((id) => {
+          if (generation === this.generation) {
+            this.projectId = id;
+          }
+          return id;
+        })
+        .finally(() => {
+          if (this.resolving === pending) {
+            this.resolving = undefined;
+          }
+        });
+      this.resolving = pending;
+    }
     return this.resolving;
   }
 
   /** Drop the held id; the next {@link getId} resolves afresh. */
   invalidate(): void {
     this.projectId = undefined;
+    // Abandon any in-flight resolution: its result predates this invalidation.
+    this.resolving = undefined;
+    this.generation += 1;
   }
 }
 

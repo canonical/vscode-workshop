@@ -167,6 +167,36 @@ suite('ProjectContext', () => {
     assert.strictEqual(client.calls, 2);
   });
 
+  test('invalidate during an in-flight resolution does not write the stale id back', async () => {
+    const releases: Array<(value: { id: string; path: string }) => void> = [];
+    let currentFolder = localFolder('/a');
+    const client = {
+      ensureProject: (path: string) =>
+        new Promise<{ id: string; path: string }>((resolve) => {
+          releases.push((value) => resolve({ ...value, path }));
+        }),
+    };
+    const context = new ProjectContext(client, state, () => currentFolder);
+
+    // A resolution for /a starts but has not completed.
+    const first = context.resolveNow();
+    // The workspace folder changes: invalidate, then resolve afresh for /b.
+    currentFolder = localFolder('/b');
+    context.invalidate();
+    const second = context.resolveNow();
+
+    // The fresh resolution settles first, then the superseded one.
+    releases[1]({ id: 'b', path: '/b' });
+    releases[0]({ id: 'a', path: '/a' });
+    await Promise.all([first, second]);
+
+    assert.strictEqual(
+      await context.getId(),
+      'b',
+      'the superseded resolution must not overwrite the fresh id',
+    );
+  });
+
   test('a failed resolution is not held: the next getId retries', async () => {
     let fail = true;
     const client = {
