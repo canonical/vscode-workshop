@@ -157,6 +157,15 @@ export class WorkshopItem extends vscode.TreeItem {
   }
 }
 
+/** Recursively tag detail items with the workshop they belong to. */
+function stampWorkshop(items: WorkshopInfoItem[], name: string): WorkshopInfoItem[] {
+  for (const item of items) {
+    item.workshopName = name;
+    stampWorkshop(item.children, name);
+  }
+  return items;
+}
+
 /**
  * Renders workshops from a {@link WorkshopPoller}. Data is served from an
  * in-memory cache that the poller keeps up-to-date; `getChildren` is
@@ -275,15 +284,15 @@ export class WorkshopsTreeProvider
     const state = this.details.get(key);
     if (!state) {
       this.loadInfo(workshop);
-      return [new WorkshopInfoItem('Loading…', [], { icon: 'sync~spin' })];
+      return stampWorkshop([new WorkshopInfoItem('Loading…', [], { icon: 'sync~spin' })], workshop.name);
     }
     switch (state.kind) {
       case 'loading':
-        return [new WorkshopInfoItem('Loading…', [], { icon: 'sync~spin' })];
+        return stampWorkshop([new WorkshopInfoItem('Loading…', [], { icon: 'sync~spin' })], workshop.name);
       case 'error':
-        return workshopInfoErrorItems(state.message, this.extensionUri);
+        return stampWorkshop(workshopInfoErrorItems(state.message, this.extensionUri), workshop.name);
       case 'loaded':
-        return workshopInfoItems(state.details, this.extensionUri);
+        return stampWorkshop(workshopInfoItems(state.details, this.extensionUri), workshop.name);
     }
   }
 
@@ -345,6 +354,20 @@ export class WorkshopsTreeProvider
     this.activeWorkshopName = name;
     this.decorationProvider.update(this.cachedItems, name);
     this.emitter.fire();
+  }
+
+  /**
+   * The workshop a selected tree item belongs to — a workshop row itself, or
+   * one of its detail children (stamped in {@link infoChildren}).
+   */
+  workshopNameForItem(item: vscode.TreeItem): string | undefined {
+    if (item instanceof WorkshopItem) {
+      return item.workshop.name;
+    }
+    if (item instanceof WorkshopInfoItem) {
+      return item.workshopName;
+    }
+    return undefined;
   }
 
   private setViewState(state: ViewState): Thenable<unknown> {

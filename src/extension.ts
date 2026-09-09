@@ -2,10 +2,16 @@ import * as vscode from 'vscode';
 
 import { WorkshopClient } from './api/client';
 import { listProjectWorkshops, Workshop } from './api/workshops';
+import { createMountsActions } from './interfaces/actions';
+import { fetchPanelData, PanelData } from './interfaces/data';
+import { MSG_NO_WORKSHOPS } from './interfaces/panelState';
+import { WorkshopOperationQueue } from './interfaces/queue';
 import { WorkshopPoller } from './poller';
 import { assertWorkshopVersionCompatible } from './version';
 import { createDefinitionWatcher } from './ui/definitionWatcher';
 import { LogsView } from './ui/logsView';
+import { MOUNTS_VIEW_ID, MountsPanelProvider } from './ui/mountsPanel';
+import { createMountsUi } from './ui/mountsUi';
 import {
   VIEW_STATE_CONTEXT,
   WorkshopsTreeProvider,
@@ -56,10 +62,47 @@ export function activate(context: vscode.ExtensionContext): void {
     logsView,
   });
 
+  const mountsDataDeps = { client };
+  const mountsActions = createMountsActions({
+    client,
+    ui: createMountsUi(),
+    queue: new WorkshopOperationQueue(),
+    log,
+  });
+  const mountsPanel = new MountsPanelProvider(
+    {
+      loadData: async (selection): Promise<PanelData> => {
+        if ((await projects.getId()) === undefined) {
+          return { body: { kind: 'message', text: MSG_NO_WORKSHOPS } };
+        }
+        return withProjectRetry(projects, (id) => fetchPanelData(mountsDataDeps, id, selection));
+      },
+      log,
+      actions: mountsActions,
+      reveal: (path) => {
+        void vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(path));
+      },
+    },
+    context.extensionUri,
+  );
+
   function updateTreeViewTitle(): void {
     treeView.title = vscode.workspace.name ?? undefined;
   }
   updateTreeViewTitle();
+
+  // The panel follows the workshop selected in the tree — a workshop row or
+  // any of its detail children.
+  function selectedTreeWorkshop(): string | undefined {
+    for (const item of treeView.selection) {
+      const name = provider.workshopNameForItem(item);
+      if (name !== undefined) {
+        return name;
+      }
+    }
+    return undefined;
+  }
+  mountsPanel.setSelectedWorkshop(selectedTreeWorkshop());
 
   let activationHandle: vscode.Disposable | undefined;
   function onViewVisible(): void {
@@ -82,12 +125,22 @@ export function activate(context: vscode.ExtensionContext): void {
     poller,
     provider,
     treeView,
+    mountsPanel,
+    vscode.window.registerWebviewViewProvider(MOUNTS_VIEW_ID, mountsPanel),
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
       updateTreeViewTitle();
       projects.invalidate();
       void poller.poll();
     }),
     vscode.window.registerFileDecorationProvider(provider.decorationProvider),
+    treeView.onDidChangeSelection(() => {
+      // A workshop row or any of its children switches the panel; other
+      // selections keep the current workshop shown.
+      const name = selectedTreeWorkshop();
+      if (name !== undefined) {
+        mountsPanel.setSelectedWorkshop(name);
+      }
+    }),
     treeView.onDidChangeVisibility((event) => {
       if (event.visible) {
         onViewVisible();

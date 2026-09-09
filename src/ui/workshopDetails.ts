@@ -26,6 +26,9 @@ function mediaIconPair(extensionUri: vscode.Uri, basename: string): { light: vsc
 }
 
 export class WorkshopInfoItem extends vscode.TreeItem {
+  /** The workshop this detail item belongs to; stamped by the tree. */
+  workshopName?: string;
+
   constructor(
     label: string,
     readonly children: WorkshopInfoItem[] = [],
