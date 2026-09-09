@@ -4,6 +4,7 @@ import {
   ConnectionsSnapshot,
   isHostSlot,
   makeSlotRef,
+  PlugInfo,
   PlugRef,
   plugKey,
   SlotInfo,
@@ -64,63 +65,51 @@ export interface BuildSectionsInput {
 }
 
 /**
- * Build the table sections. One row per *wiring*: a plug wired to the host
- * and to an SDK slot (each live, or disconnected-with-identity the daemon
- * still reports as `undesired`) yields two rows, one per section, each with
- * its own toggle. A plug with no identity at all is a disconnected host row.
- * Sections with no rows are omitted; rows sort by SDK name then plug name.
+ * Build the table sections. Iterates the daemon's connection lists — one row
+ * per connection, established or `undesired` (disconnected-with-identity) —
+ * exactly as the `workshop connections` client does, so a plug wired to
+ * several slots yields a row each. A plug the daemon lists with no connection
+ * at all becomes a default disconnected host row. Rows sort by SDK name then
+ * plug name; sections with no rows are omitted.
  */
 export function buildSections(input: BuildSectionsInput): MountSection[] {
   const { snapshot } = input;
   const candidates = sdkSlotCandidates(snapshot);
   const workshopRows: MountRow[] = [];
   const hostRows: MountRow[] = [];
+  // Plugs that already have a connection row; a plug with none becomes a
+  // default host row below.
+  const connectedPlugs = new Set<string>();
 
-  const sortedPlugs = [...snapshot.plugs].sort(
-    (a, b) => a.sdk.localeCompare(b.sdk) || a.plug.localeCompare(b.plug),
-  );
-
-  for (const plugInfo of sortedPlugs) {
-    const key = plugKey(plugInfo);
-    const plug: PlugRef = {
-      'project-id': plugInfo['project-id'],
-      workshop: plugInfo.workshop,
-      sdk: plugInfo.sdk,
-      plug: plugInfo.plug,
-    };
-
-    const establishedFor = (host: boolean): ConnectionEntry | undefined =>
-      snapshot.established.find((e) => plugKey(e.plug) === key && isHostSlot(e.slot) === host);
-    const undesiredFor = (host: boolean): ConnectionEntry | undefined =>
-      snapshot.undesired.find((e) => plugKey(e.plug) === key && isHostSlot(e.slot) === host);
-
-    // SDK (Workshop-section) channel: live → disconnected-with-identity.
-    const sdkLive = establishedFor(false);
-    const sdkUndesired = undesiredFor(false);
-    const sdkSlot = sdkLive?.slot ?? sdkUndesired?.slot;
-
-    // Host channel: live → disconnected-with-identity → default (a plug with
-    // no other identity is a host row).
-    const hostLive = establishedFor(true);
-    const hostUndesired = undesiredFor(true);
-    const hostSlot = hostLive?.slot
-      ?? hostUndesired?.slot
-      ?? (sdkSlot === undefined
-        ? makeSlotRef(input.projectId, input.workshop, SYSTEM_SDK, 'mount')
-        : undefined);
-
-    const target = attrString(plugInfo.attrs, 'workshop-target')
+  const addConnectionRow = (entry: ConnectionEntry, connected: boolean): void => {
+    const key = plugKey(entry.plug);
+    connectedPlugs.add(key);
+    const target = attrString(entry['plug-attrs'], 'workshop-target')
+      ?? attrString(findPlug(snapshot, entry.plug)?.attrs, 'workshop-target')
       ?? input.mounts[key]?.workshopTarget;
 
-    if (sdkSlot !== undefined) {
-      const connected = sdkLive !== undefined;
-      const source = attrString(sdkLive?.['slot-attrs'], 'workshop-source')
-        ?? attrString(sdkUndesired?.['slot-attrs'], 'workshop-source')
-        ?? attrString(findSlot(snapshot, sdkSlot)?.attrs, 'workshop-source');
+    if (isHostSlot(entry.slot)) {
+      const source = input.mounts[key]?.hostSource
+        ?? attrString(entry['slot-attrs'], 'host-source');
+      hostRows.push(makeRow({
+        section: 'host',
+        plug: entry.plug,
+        slot: entry.slot,
+        connected,
+        source,
+        sourceDisplay: source !== undefined ? shortenHostPath(source) : undefined,
+        target,
+        menu: connected
+          ? ['remount', ...connectToSdkMenu(candidates)]
+          : connectToSdkMenu(candidates),
+      }));
+    } else {
+      const source = attrString(entry['slot-attrs'], 'workshop-source')
+        ?? attrString(findSlot(snapshot, entry.slot)?.attrs, 'workshop-source');
       workshopRows.push(makeRow({
         section: 'workshop',
-        plug,
-        slot: sdkSlot,
+        plug: entry.plug,
+        slot: entry.slot,
         connected,
         source,
         sourceDisplay: undefined,
@@ -128,26 +117,44 @@ export function buildSections(input: BuildSectionsInput): MountSection[] {
         menu: connected ? [] : connectToSdkMenu(candidates),
       }));
     }
+  };
 
-    if (hostSlot !== undefined) {
-      const connected = hostLive !== undefined;
-      const source = input.mounts[key]?.hostSource
-        ?? attrString(hostLive?.['slot-attrs'], 'host-source')
-        ?? attrString(hostUndesired?.['slot-attrs'], 'host-source');
-      hostRows.push(makeRow({
-        section: 'host',
-        plug,
-        slot: hostSlot,
-        connected,
-        source,
-        sourceDisplay: source !== undefined ? shortenHostPath(source) : undefined,
-        target: attrString(hostLive?.['plug-attrs'], 'workshop-target') ?? target,
-        menu: connected
-          ? ['remount', ...connectToSdkMenu(candidates)]
-          : connectToSdkMenu(candidates),
-      }));
-    }
+  for (const entry of snapshot.established) {
+    addConnectionRow(entry, true);
   }
+  for (const entry of snapshot.undesired) {
+    addConnectionRow(entry, false);
+  }
+
+  // A plug with no connection at all is a disconnected host row (its toggle
+  // connects to the host).
+  for (const plugInfo of snapshot.plugs) {
+    const key = plugKey(plugInfo);
+    if (connectedPlugs.has(key)) {
+      continue;
+    }
+    const source = input.mounts[key]?.hostSource;
+    hostRows.push(makeRow({
+      section: 'host',
+      plug: {
+        'project-id': plugInfo['project-id'],
+        workshop: plugInfo.workshop,
+        sdk: plugInfo.sdk,
+        plug: plugInfo.plug,
+      },
+      slot: makeSlotRef(input.projectId, input.workshop, SYSTEM_SDK, 'mount'),
+      connected: false,
+      source,
+      sourceDisplay: source !== undefined ? shortenHostPath(source) : undefined,
+      target: attrString(plugInfo.attrs, 'workshop-target') ?? input.mounts[key]?.workshopTarget,
+      menu: connectToSdkMenu(candidates),
+    }));
+  }
+
+  const bySdkThenPlug = (a: MountRow, b: MountRow): number =>
+    a.plug.sdk.localeCompare(b.plug.sdk) || a.plug.plug.localeCompare(b.plug.plug);
+  workshopRows.sort(bySdkThenPlug);
+  hostRows.sort(bySdkThenPlug);
 
   const sections: MountSection[] = [];
   if (workshopRows.length > 0) {
@@ -213,6 +220,11 @@ function connectToSdkMenu(candidates: SlotInfo[]): ('remount' | 'connect-to-sdk'
 function findSlot(snapshot: ConnectionsSnapshot, ref: SlotRef): SlotInfo | undefined {
   const key = slotKey(ref);
   return snapshot.slots.find((slot) => slotKey(slot) === key);
+}
+
+function findPlug(snapshot: ConnectionsSnapshot, ref: PlugRef): PlugInfo | undefined {
+  const key = plugKey(ref);
+  return snapshot.plugs.find((plug) => plugKey(plug) === key);
 }
 
 /**
