@@ -61,9 +61,8 @@ export async function fetchPanelData(
   selectedWorkshop: string | undefined,
 ): Promise<PanelData> {
   const workshops = mergeWorkshops(await deps.client.listWorkshops(projectId), projectId);
-  const names = workshops.map((workshop) => workshop.name);
 
-  if (names.length === 0) {
+  if (workshops.length === 0) {
     return { body: { kind: 'message', text: MSG_NO_WORKSHOPS } };
   }
   if (selectedWorkshop === undefined) {
@@ -73,19 +72,16 @@ export async function fetchPanelData(
   if (selected === undefined) {
     return { body: { kind: 'message', text: workshopGoneMessage(selectedWorkshop) } };
   }
-  const body = await deriveSelectedBody(deps, projectId, names, selected);
+  const body = await deriveSelectedBody(deps, projectId, selected);
   return { body };
 }
 
 async function deriveSelectedBody(
   deps: MountsDataDeps,
   projectId: string,
-  names: string[],
   workshop: Workshop,
 ): Promise<PanelState> {
   const base = {
-    workshops: names,
-    selected: workshop.name,
     status: workshop.status,
   };
 

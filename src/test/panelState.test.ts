@@ -9,7 +9,6 @@ import {
   MSG_NO_WORKSHOPS,
   MSG_OFF,
   pendingMessage,
-  workshopGoneMessage,
 } from '../interfaces/panelState';
 
 function message(text: string) {
@@ -28,24 +27,10 @@ suite('derivePanelState message matrix', () => {
     assert.deepStrictEqual(derivePanelState({}), message(MSG_LOADING));
   });
 
-  test('no workshops → No workshops in this project.', () => {
-    assert.deepStrictEqual(derivePanelState({ workshops: [] }), message(MSG_NO_WORKSHOPS));
-  });
-
-  test('selected workshop vanished → Workshop <name> no longer exists.', () => {
-    assert.deepStrictEqual(
-      derivePanelState({ workshops: ['db', 'web'], selected: 'gone' }),
-      message(workshopGoneMessage('gone')),
-    );
-    assert.strictEqual(workshopGoneMessage('gone'), 'Workshop gone no longer exists.');
-  });
-
   test('matched lifecycle Pending → task message with the change kind', () => {
     for (const kind of ['launch', 'refresh']) {
       assert.deepStrictEqual(
         derivePanelState({
-          workshops: ['dev'],
-          selected: 'dev',
           status: 'Pending',
           pendingKind: kind,
           sections: SECTIONS,
@@ -63,14 +48,14 @@ suite('derivePanelState message matrix', () => {
     // The data layer never sets pendingKind for connect/disconnect/remount;
     // given that, a Pending workshop with a snapshot renders the table.
     assert.deepStrictEqual(
-      derivePanelState({ workshops: ['dev'], selected: 'dev', status: 'Pending', sections: SECTIONS }),
+      derivePanelState({ status: 'Pending', sections: SECTIONS }),
       { kind: 'table', sections: SECTIONS },
     );
   });
 
   test('unmatched Pending with no snapshot yet → Loading, never a fabricated task name', () => {
     assert.deepStrictEqual(
-      derivePanelState({ workshops: ['dev'], selected: 'dev', status: 'Pending' }),
+      derivePanelState({ status: 'Pending' }),
       message(MSG_LOADING),
     );
   });
@@ -78,7 +63,7 @@ suite('derivePanelState message matrix', () => {
   test('Off / Error / Unknown → the Off message with no rows', () => {
     for (const status of ['Off', 'Error', 'Unknown'] as const) {
       assert.deepStrictEqual(
-        derivePanelState({ workshops: ['dev'], selected: 'dev', status, sections: SECTIONS }),
+        derivePanelState({ status, sections: SECTIONS }),
         message(MSG_OFF),
       );
     }
@@ -87,11 +72,11 @@ suite('derivePanelState message matrix', () => {
 
   test('launched with no snapshot yet → Loading; with no plugs → No mounts', () => {
     assert.deepStrictEqual(
-      derivePanelState({ workshops: ['dev'], selected: 'dev', status: 'On' }),
+      derivePanelState({ status: 'On' }),
       message(MSG_LOADING),
     );
     assert.deepStrictEqual(
-      derivePanelState({ workshops: ['dev'], selected: 'dev', status: 'On', sections: [] }),
+      derivePanelState({ status: 'On', sections: [] }),
       message(MSG_NO_MOUNTS),
     );
   });
@@ -99,7 +84,7 @@ suite('derivePanelState message matrix', () => {
   test('launched with rows → the table (On and Waiting)', () => {
     for (const status of ['On', 'Waiting'] as const) {
       assert.deepStrictEqual(
-        derivePanelState({ workshops: ['dev'], selected: 'dev', status, sections: SECTIONS }),
+        derivePanelState({ status, sections: SECTIONS }),
         { kind: 'table', sections: SECTIONS },
       );
     }
