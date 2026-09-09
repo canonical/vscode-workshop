@@ -7,7 +7,7 @@ import {
   rowId,
   sdkSlotCandidates,
   shortenHostPath,
-} from '../mounts/model';
+} from '../interfaces/model';
 
 const P = 'p1';
 const W = 'dev';

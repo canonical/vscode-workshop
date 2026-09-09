@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 
-import { MountSection } from '../mounts/model';
+import { MountSection } from '../interfaces/model';
 import {
   derivePanelState,
   MSG_DEVICES,
@@ -10,7 +10,7 @@ import {
   MSG_OFF,
   pendingMessage,
   workshopGoneMessage,
-} from '../mounts/panelState';
+} from '../interfaces/panelState';
 
 function message(text: string) {
   return { kind: 'message', text };
