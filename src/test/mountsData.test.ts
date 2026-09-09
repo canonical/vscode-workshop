@@ -3,7 +3,6 @@ import * as assert from 'assert';
 import { Change, WorkshopApiError, WorkshopsResponse, WorkshopInfo } from '../api/client';
 import { ConnectionsSnapshot } from '../api/connections';
 import { fetchPanelData, MountsClient, MountsDataDeps } from '../mounts/data';
-import { InflightTracker } from '../mounts/inflight';
 import {
   MSG_LOADING,
   MSG_NO_SELECTION,
@@ -73,18 +72,14 @@ class StubClient implements MountsClient {
 function makeDeps(config: StubConfig, overrides?: Partial<MountsDataDeps>): {
   deps: MountsDataDeps;
   client: StubClient;
-  inflight: InflightTracker;
 } {
   const client = new StubClient(config);
-  const inflight = new InflightTracker();
   return {
     deps: {
       client,
-      inflight,
       ...overrides,
     },
     client,
-    inflight,
   };
 }
 
@@ -228,15 +223,5 @@ suite('fetchPanelData', () => {
       connections: { dev: DEV_SNAPSHOT },
     });
     await assert.rejects(() => fetchPanelData(deps, P, 'dev'), /boom/);
-  });
-
-  test('a guided remount blanks the tab regardless of status', async () => {
-    const { deps, inflight, client } = makeDeps({
-      response: { workshops: [{ 'project-id': P, name: 'dev', status: 'pending' }] },
-    });
-    inflight.beginGuidedRemount(P, 'dev');
-    const data = await fetchPanelData(deps, P, 'dev');
-    assert.deepStrictEqual(data.body, { kind: 'message', text: pendingMessage('remount') });
-    assert.ok(!client.calls.some((c) => c.startsWith('listChanges')), 'no change matching needed');
   });
 });

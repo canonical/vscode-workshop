@@ -29,14 +29,12 @@ function snapshot(parts: Partial<ConnectionsSnapshot>): ConnectionsSnapshot {
 function build(overrides: {
   snapshot: ConnectionsSnapshot;
   mounts?: Record<string, { hostSource: string; workshopTarget?: string }>;
-  pendingRowIds?: Set<string>;
 }) {
   return buildSections({
     projectId: P,
     workshop: W,
     snapshot: overrides.snapshot,
     mounts: overrides.mounts ?? {},
-    pendingRowIds: overrides.pendingRowIds ?? new Set(),
   });
 }
 
@@ -187,18 +185,7 @@ suite('buildSections', () => {
     );
   });
 
-  test('pending rows carry pending=true; no sections at all when no plugs', () => {
-    const id = rowId('host', { sdk: 'node', plug: 'npm-cache' }, { sdk: 'system', slot: 'mount' });
-    const sections = build({
-      snapshot: snapshot({
-        established: [{ plug: plugRef('node', 'npm-cache'), slot: HOST_SLOT }],
-        plugs: [{ ...plugRef('node', 'npm-cache') }],
-        slots: [{ ...HOST_SLOT }],
-      }),
-      pendingRowIds: new Set([id]),
-    });
-    assert.strictEqual(sections[0].rows[0].pending, true);
-
+  test('no sections at all when there are no plugs', () => {
     assert.deepStrictEqual(build({ snapshot: snapshot({}) }), []);
   });
 

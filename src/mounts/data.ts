@@ -6,7 +6,6 @@ import {
 } from '../api/client';
 import { plugKey } from '../api/connections';
 import { mergeWorkshops, Workshop } from '../api/workshops';
-import { InflightTracker } from './inflight';
 import { HostMounts, buildSections } from './model';
 import {
   derivePanelState,
@@ -30,7 +29,6 @@ export type MountsClient = Pick<
 
 export interface MountsDataDeps {
   client: MountsClient;
-  inflight: InflightTracker;
 }
 
 /**
@@ -85,16 +83,11 @@ async function deriveSelectedBody(
   names: string[],
   workshop: Workshop,
 ): Promise<PanelState> {
-  const guidedRemount = deps.inflight.isGuidedRemount(projectId, workshop.name);
   const base = {
     workshops: names,
     selected: workshop.name,
     status: workshop.status,
-    guidedRemount,
   };
-  if (guidedRemount) {
-    return derivePanelState(base);
-  }
 
   let pendingKind: string | undefined;
   if (workshop.status === 'Pending') {
@@ -179,7 +172,6 @@ async function fetchLiveState(
       workshop: workshop.name,
       snapshot,
       mounts: hostMounts,
-      pendingRowIds: deps.inflight.pendingRowIds(),
     }),
   };
 }

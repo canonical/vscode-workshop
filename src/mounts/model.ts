@@ -40,8 +40,6 @@ export interface MountRow {
   /** Sub-label under Target: `<sdk>:<plug>` of the row's plug. */
   targetSub: string;
   menu: ('remount' | 'connect-to-sdk')[];
-  /** True while this row is being remounted — renders the switch disabled. */
-  pending: boolean;
 }
 
 export interface MountSection {
@@ -63,8 +61,6 @@ export interface BuildSectionsInput {
    * daemon-derived auto path (established mounts only).
    */
   mounts: HostMounts;
-  /** Row ids currently pending (being remounted). */
-  pendingRowIds: ReadonlySet<string>;
 }
 
 /**
@@ -121,7 +117,7 @@ export function buildSections(input: BuildSectionsInput): MountSection[] {
       const source = attrString(sdkLive?.['slot-attrs'], 'workshop-source')
         ?? attrString(sdkUndesired?.['slot-attrs'], 'workshop-source')
         ?? attrString(findSlot(snapshot, sdkSlot)?.attrs, 'workshop-source');
-      workshopRows.push(makeRow(input, {
+      workshopRows.push(makeRow({
         section: 'workshop',
         plug,
         slot: sdkSlot,
@@ -138,7 +134,7 @@ export function buildSections(input: BuildSectionsInput): MountSection[] {
       const source = input.mounts[key]?.hostSource
         ?? attrString(hostLive?.['slot-attrs'], 'host-source')
         ?? attrString(hostUndesired?.['slot-attrs'], 'host-source');
-      hostRows.push(makeRow(input, {
+      hostRows.push(makeRow({
         section: 'host',
         plug,
         slot: hostSlot,
@@ -174,7 +170,6 @@ export function buildSections(input: BuildSectionsInput): MountSection[] {
 }
 
 function makeRow(
-  input: BuildSectionsInput,
   row: {
     section: 'workshop' | 'host';
     plug: PlugRef;
@@ -199,7 +194,6 @@ function makeRow(
     target: row.target,
     targetSub: plugKey(row.plug),
     menu: row.menu,
-    pending: input.pendingRowIds.has(id),
   };
 }
 

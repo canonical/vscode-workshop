@@ -40,19 +40,6 @@ suite('derivePanelState message matrix', () => {
     assert.strictEqual(workshopGoneMessage('gone'), 'Workshop gone no longer exists.');
   });
 
-  test('guided remount blanks the tab with the Remount task message', () => {
-    assert.deepStrictEqual(
-      derivePanelState({
-        workshops: ['dev'],
-        selected: 'dev',
-        status: 'Pending',
-        guidedRemount: true,
-        sections: SECTIONS,
-      }),
-      message('Remount task in progress… Mounts will show when workshop is ready'),
-    );
-  });
-
   test('matched lifecycle Pending → task message with the change kind', () => {
     for (const kind of ['launch', 'refresh']) {
       assert.deepStrictEqual(
