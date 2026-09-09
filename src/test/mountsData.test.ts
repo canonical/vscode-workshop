@@ -1,15 +1,13 @@
 import * as assert from 'assert';
 
-import { Change, WorkshopApiError, WorkshopsResponse, WorkshopInfo } from '../api/client';
+import { Change, WorkshopApiError, WorkshopInfo } from '../api/client';
 import { ConnectionsSnapshot } from '../api/connections';
 import { fetchPanelData, MountsClient, MountsDataDeps } from '../interfaces/data';
 import {
   MSG_LOADING,
   MSG_NO_SELECTION,
-  MSG_NO_WORKSHOPS,
   MSG_OFF,
   pendingMessage,
-  workshopGoneMessage,
 } from '../interfaces/panelState';
 
 const P = 'p1';
@@ -23,7 +21,6 @@ function slotRef(workshop: string, sdk: string, name: string) {
 }
 
 interface StubConfig {
-  response?: WorkshopsResponse;
   details?: Record<string, WorkshopInfo | WorkshopApiError>;
   connections?: Record<string, ConnectionsSnapshot | WorkshopApiError>;
   changes?: Change[];
@@ -33,11 +30,6 @@ class StubClient implements MountsClient {
   calls: string[] = [];
 
   constructor(private readonly config: StubConfig) {}
-
-  async listWorkshops(projectId: string): Promise<WorkshopsResponse> {
-    this.calls.push(`listWorkshops:${projectId}`);
-    return this.config.response ?? {};
-  }
 
   async getWorkshop(projectId: string, name: string): Promise<WorkshopInfo> {
     this.calls.push(`getWorkshop:${name}`);
@@ -83,11 +75,6 @@ function makeDeps(config: StubConfig, overrides?: Partial<MountsDataDeps>): {
   };
 }
 
-const DEV_READY: WorkshopsResponse = {
-  workshops: [{ 'project-id': P, name: 'dev', status: 'ready' }],
-  files: [{ 'project-id': P, name: 'dev', path: '/defs/dev.yaml' }],
-};
-
 const DEV_DETAIL: WorkshopInfo = {
   'project-id': P,
   name: 'dev',
@@ -106,6 +93,9 @@ const DEV_DETAIL: WorkshopInfo = {
   ],
 };
 
+const DEV_PENDING: WorkshopInfo = { ...DEV_DETAIL, status: 'pending' };
+const DEV_STOPPED: WorkshopInfo = { ...DEV_DETAIL, status: 'stopped' };
+
 const DEV_SNAPSHOT: ConnectionsSnapshot = {
   established: [{
     plug: plugRef('dev', 'node', 'npm-cache'),
@@ -120,7 +110,6 @@ const DEV_SNAPSHOT: ConnectionsSnapshot = {
 suite('fetchPanelData', () => {
   test('a launched workshop yields the table', async () => {
     const { deps } = makeDeps({
-      response: DEV_READY,
       details: { dev: DEV_DETAIL },
       connections: { dev: DEV_SNAPSHOT },
     });
@@ -136,46 +125,30 @@ suite('fetchPanelData', () => {
     }
   });
 
-  test('no workshops → the no-workshops message', async () => {
-    const { deps } = makeDeps({ response: {} });
-    const data = await fetchPanelData(deps, P, undefined);
-    assert.deepStrictEqual(data.body, { kind: 'message', text: MSG_NO_WORKSHOPS });
-  });
-
-  test('workshops exist but none is selected → the no-selection message', async () => {
-    const { deps, client } = makeDeps({ response: DEV_READY });
+  test('nothing selected → the no-selection message; no fetch', async () => {
+    const { deps, client } = makeDeps({});
     const data = await fetchPanelData(deps, P, undefined);
     assert.deepStrictEqual(data.body, { kind: 'message', text: MSG_NO_SELECTION });
-    assert.ok(!client.calls.some((c) => c.startsWith('getWorkshop') || c.startsWith('getConnections')));
+    assert.deepStrictEqual(client.calls, []);
   });
 
-  test('a vanished selection keeps its name and shows the gone message', async () => {
-    const { deps } = makeDeps({
-      response: {
-        workshops: [
-          { 'project-id': P, name: 'a', status: 'ready' },
-          { 'project-id': P, name: 'b', status: 'ready' },
-        ],
-      },
-      details: {},
-      connections: {},
-    });
-    const data = await fetchPanelData(deps, P, 'gone');
-    assert.deepStrictEqual(data.body, { kind: 'message', text: workshopGoneMessage('gone') });
-  });
-
-  test('an Off workshop shows the Off message without touching live endpoints', async () => {
-    const { deps, client } = makeDeps({
-      response: { files: [{ 'project-id': P, name: 'dev', path: '/defs/dev.yaml' }] },
-    });
+  test('a name with no instance renders as Off (never launched or removed)', async () => {
+    const { deps, client } = makeDeps({ details: {} }); // getWorkshop 404s
     const data = await fetchPanelData(deps, P, 'dev');
     assert.deepStrictEqual(data.body, { kind: 'message', text: MSG_OFF });
-    assert.ok(!client.calls.some((c) => c.startsWith('getWorkshop') || c.startsWith('getConnections')));
+    assert.ok(!client.calls.some((c) => c.startsWith('getConnections')), 'no live fetch for Off');
+  });
+
+  test('a stopped workshop renders as Off without touching the live endpoints', async () => {
+    const { deps, client } = makeDeps({ details: { dev: DEV_STOPPED } });
+    const data = await fetchPanelData(deps, P, 'dev');
+    assert.deepStrictEqual(data.body, { kind: 'message', text: MSG_OFF });
+    assert.ok(!client.calls.some((c) => c.startsWith('getConnections')));
   });
 
   test('Pending matched to a lifecycle change blanks the tab with that kind', async () => {
     const { deps, client } = makeDeps({
-      response: { workshops: [{ 'project-id': P, name: 'dev', status: 'pending' }] },
+      details: { dev: DEV_PENDING },
       changes: [{ id: 'c1', kind: 'launch', summary: 'Launch workshop "dev"', status: 'Doing', ready: false }],
     });
     const data = await fetchPanelData(deps, P, 'dev');
@@ -186,8 +159,7 @@ suite('fetchPanelData', () => {
 
   test('Pending from a row-op keeps the table live (AC 18)', async () => {
     const { deps } = makeDeps({
-      response: { workshops: [{ 'project-id': P, name: 'dev', status: 'pending' }], files: DEV_READY.files },
-      details: { dev: DEV_DETAIL },
+      details: { dev: DEV_PENDING },
       connections: { dev: DEV_SNAPSHOT },
       changes: [{ id: 'c1', kind: 'disconnect', summary: 'Disconnect dev/node:npm-cache from dev/system:mount', status: 'Doing', ready: false }],
     });
@@ -197,8 +169,7 @@ suite('fetchPanelData', () => {
 
   test('Pending matching nothing fetches live state rather than fabricating a task', async () => {
     const { deps } = makeDeps({
-      response: { workshops: [{ 'project-id': P, name: 'dev', status: 'pending' }], files: DEV_READY.files },
-      details: { dev: DEV_DETAIL },
+      details: { dev: DEV_PENDING },
       connections: { dev: DEV_SNAPSHOT },
       changes: [],
     });
@@ -206,22 +177,17 @@ suite('fetchPanelData', () => {
     assert.strictEqual(data.body.kind, 'table');
   });
 
-  test('a 404 from the live endpoints degrades to Loading, not a poll failure', async () => {
+  test('a 404 from getConnections degrades to Loading, not a poll failure', async () => {
     const { deps } = makeDeps({
-      response: DEV_READY,
-      details: { dev: new WorkshopApiError('not found', 404) },
-      connections: { dev: DEV_SNAPSHOT },
+      details: { dev: DEV_DETAIL },
+      connections: { dev: new WorkshopApiError('not found', 404) },
     });
     const data = await fetchPanelData(deps, P, 'dev');
     assert.deepStrictEqual(data.body, { kind: 'message', text: MSG_LOADING });
   });
 
-  test('non-404 errors from live endpoints propagate to the poll error path', async () => {
-    const { deps } = makeDeps({
-      response: DEV_READY,
-      details: { dev: new WorkshopApiError('boom', 500) },
-      connections: { dev: DEV_SNAPSHOT },
-    });
+  test('non-404 errors propagate to the poll error path', async () => {
+    const { deps } = makeDeps({ details: { dev: new WorkshopApiError('boom', 500) } });
     await assert.rejects(() => fetchPanelData(deps, P, 'dev'), /boom/);
   });
 });
