@@ -5,14 +5,12 @@ import {
   WorkshopInfo,
 } from '../api/client';
 import { plugKey } from '../api/connections';
-import { mergeWorkshops, Workshop } from '../api/workshops';
-import { HostMounts, buildSections } from './model';
+import { normalizeStatus } from '../api/workshops';
+import { HostMounts, MountSection, buildSections } from './model';
 import {
   derivePanelState,
   MSG_NO_SELECTION,
-  MSG_NO_WORKSHOPS,
   PanelState,
-  workshopGoneMessage,
 } from './panelState';
 
 /**
@@ -24,7 +22,7 @@ import {
 
 export type MountsClient = Pick<
   WorkshopClient,
-  'listWorkshops' | 'getWorkshop' | 'getConnections' | 'listChanges'
+  'getWorkshop' | 'getConnections' | 'listChanges'
 >;
 
 export interface MountsDataDeps {
@@ -60,46 +58,46 @@ export async function fetchPanelData(
   projectId: string,
   selectedWorkshop: string | undefined,
 ): Promise<PanelData> {
-  const workshops = mergeWorkshops(await deps.client.listWorkshops(projectId), projectId);
-
-  if (workshops.length === 0) {
-    return { body: { kind: 'message', text: MSG_NO_WORKSHOPS } };
-  }
   if (selectedWorkshop === undefined) {
     return { body: { kind: 'message', text: MSG_NO_SELECTION } };
   }
-  const selected = workshops.find((workshop) => workshop.name === selectedWorkshop);
-  if (selected === undefined) {
-    return { body: { kind: 'message', text: workshopGoneMessage(selectedWorkshop) } };
-  }
-  const body = await deriveSelectedBody(deps, projectId, selected);
-  return { body };
+  return { body: await deriveSelectedBody(deps, projectId, selectedWorkshop) };
 }
 
 async function deriveSelectedBody(
   deps: MountsDataDeps,
   projectId: string,
-  workshop: Workshop,
+  workshop: string,
 ): Promise<PanelState> {
-  const base = {
-    status: workshop.status,
-  };
+  let detail: WorkshopInfo;
+  try {
+    detail = await deps.client.getWorkshop(projectId, workshop);
+  } catch (err) {
+    // The name comes from the tree. A kind-less 404 means there is no
+    // container instance — never launched, or just removed — so render it as
+    // Off. A stopped workshop keeps its container and does not 404.
+    if (isNotFound(err)) {
+      return derivePanelState({ status: 'Off' });
+    }
+    throw err;
+  }
 
-  let pendingKind: string | undefined;
-  if (workshop.status === 'Pending') {
-    pendingKind = await matchLifecycleChange(deps.client, projectId, workshop.name);
+  const status = normalizeStatus(detail.status);
+
+  if (status === 'Pending') {
+    const pendingKind = await matchLifecycleChange(deps.client, projectId, workshop);
     if (pendingKind !== undefined) {
-      return derivePanelState({ ...base, pendingKind });
+      return derivePanelState({ status, pendingKind });
     }
   }
-  if (workshop.status === 'Off' || workshop.status === 'Error' || workshop.status === 'Unknown') {
-    return derivePanelState(base);
+  if (status === 'Off' || status === 'Error' || status === 'Unknown') {
+    return derivePanelState({ status });
   }
 
   // Launched (On/Waiting), or Pending from a row-op/unmatched change: show
   // live state so flipping switches never blanks the tab.
-  const live = await fetchLiveState(deps, projectId, workshop);
-  return derivePanelState({ ...base, sections: live?.sections });
+  const sections = await fetchSections(deps, projectId, workshop, detail);
+  return derivePanelState({ status, sections });
 }
 
 /**
@@ -130,22 +128,19 @@ function changeMatchesWorkshop(change: Change, workshop: string): boolean {
   );
 }
 
-async function fetchLiveState(
+async function fetchSections(
   deps: MountsDataDeps,
   projectId: string,
-  workshop: Workshop,
-): Promise<{ sections: ReturnType<typeof buildSections> } | undefined> {
-  let detail: WorkshopInfo;
+  workshop: string,
+  detail: WorkshopInfo,
+): Promise<MountSection[] | undefined> {
   let snapshot;
   try {
-    [detail, snapshot] = await Promise.all([
-      deps.client.getWorkshop(projectId, workshop.name),
-      deps.client.getConnections(projectId, workshop.name),
-    ]);
+    snapshot = await deps.client.getConnections(projectId, workshop);
   } catch (err) {
-    // A plain 404 means the fetch raced a stop/remove (these endpoints send
-    // no error kind, just the status): degrade to Loading, not a failed poll.
-    if (err instanceof WorkshopApiError && err.statusCode === 404 && err.kind === undefined) {
+    // Raced a stop/remove after the status fetch: a kind-less 404 degrades to
+    // Loading, not a failed poll.
+    if (isNotFound(err)) {
       return undefined;
     }
     throw err;
@@ -162,12 +157,10 @@ async function fetchLiveState(
     }
   }
 
-  return {
-    sections: buildSections({
-      projectId,
-      workshop: workshop.name,
-      snapshot,
-      mounts: hostMounts,
-    }),
-  };
+  return buildSections({ projectId, workshop, snapshot, mounts: hostMounts });
+}
+
+/** A kind-less 404: the workshop has no container instance right now. */
+function isNotFound(err: unknown): boolean {
+  return err instanceof WorkshopApiError && err.statusCode === 404 && err.kind === undefined;
 }

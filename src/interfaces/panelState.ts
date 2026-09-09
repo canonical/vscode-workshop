@@ -14,10 +14,6 @@ export const MSG_NO_WORKSHOPS = 'No workshops in this project.';
 export const MSG_NO_SELECTION = 'Select a workshop to see its mounts.';
 export const MSG_DEVICES = 'Devices are coming soon.';
 
-export function workshopGoneMessage(name: string): string {
-  return `Workshop ${name} no longer exists.`;
-}
-
 /** `<Kind> task in progress…` — kind is a daemon change kind (`launch`…). */
 export function pendingMessage(kind: string): string {
   const title = kind.length > 0 ? kind[0].toUpperCase() + kind.slice(1) : kind;
