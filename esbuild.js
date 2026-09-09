@@ -42,11 +42,28 @@ async function main() {
 			esbuildProblemMatcherPlugin,
 		],
 	});
+	// The mounts webview script: browser iife bundle sharing the protocol
+	// types with the extension side. Output is generated (gitignored).
+	const webviewCtx = await esbuild.context({
+		entryPoints: [
+			'src/webview/mountsPanel.ts'
+		],
+		bundle: true,
+		format: 'iife',
+		minify: production,
+		sourcemap: false,
+		platform: 'browser',
+		outfile: 'media/mountsPanel.js',
+		logLevel: 'silent',
+		plugins: [
+			esbuildProblemMatcherPlugin,
+		],
+	});
 	if (watch) {
-		await ctx.watch();
+		await Promise.all([ctx.watch(), webviewCtx.watch()]);
 	} else {
-		await ctx.rebuild();
-		await ctx.dispose();
+		await Promise.all([ctx.rebuild(), webviewCtx.rebuild()]);
+		await Promise.all([ctx.dispose(), webviewCtx.dispose()]);
 	}
 }
 
