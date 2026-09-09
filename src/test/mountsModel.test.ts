@@ -9,7 +9,6 @@ import {
   shortenHostPath,
 } from '../mounts/model';
 import { WorkshopMemory } from '../mounts/memory';
-import { DeclaredPairing } from '../mounts/declared';
 
 const P = 'p1';
 const W = 'dev';
@@ -28,16 +27,9 @@ function snapshot(parts: Partial<ConnectionsSnapshot>): ConnectionsSnapshot {
   return { established: [], undesired: [], plugs: [], slots: [], ...parts };
 }
 
-function declared(plug: string, slot: string): DeclaredPairing {
-  const [psdk, pname] = plug.split(':');
-  const [ssdk, sname] = slot.split(':');
-  return { plug: { sdk: psdk, name: pname }, slot: { sdk: ssdk, name: sname } };
-}
-
 function build(overrides: {
   snapshot: ConnectionsSnapshot;
   mounts?: Record<string, { hostSource: string; workshopTarget?: string }>;
-  declared?: DeclaredPairing[];
   memory?: WorkshopMemory;
   pendingRowIds?: Set<string>;
 }) {
@@ -46,7 +38,6 @@ function build(overrides: {
     workshop: W,
     snapshot: overrides.snapshot,
     mounts: overrides.mounts ?? {},
-    declared: overrides.declared ?? [],
     memory: overrides.memory ?? {},
     pendingRowIds: overrides.pendingRowIds ?? new Set(),
   });
@@ -109,7 +100,7 @@ suite('buildSections', () => {
     assert.deepStrictEqual(internal.menu, [], 'internal mounts are never remountable');
   });
 
-  test('a plug with no live, remembered or declared pairing is a disconnected host row', () => {
+  test('a plug with no live or remembered pairing is a disconnected host row', () => {
     const sections = build({
       snapshot: snapshot({
         plugs: [{ ...plugRef('uv', 'cache'), attrs: { 'workshop-target': '/home/workshop/.cache/uv' } }],
@@ -126,16 +117,15 @@ suite('buildSections', () => {
     assert.deepStrictEqual(row.menu, []);
   });
 
-  test('disconnected identity precedence: remembered wins over declared', () => {
+  test('a remembered SDK pairing keeps a disconnected plug internal', () => {
     const memory: WorkshopMemory = {
       'jupyter:venv': { sdk: { slot: slotRef('uv', 'venv'), source: '/home/workshop/uv-venv' } },
     };
     const sections = build({
       snapshot: snapshot({
         plugs: [{ ...plugRef('jupyter', 'venv') }],
-        slots: [{ ...HOST_SLOT }, { ...slotRef('go', 'share') }, { ...slotRef('uv', 'venv') }],
+        slots: [{ ...HOST_SLOT }, { ...slotRef('uv', 'venv') }],
       }),
-      declared: [declared('jupyter:venv', 'go:share')],
       memory,
     });
 
@@ -145,20 +135,6 @@ suite('buildSections', () => {
     assert.strictEqual(row.source, '/home/workshop/uv-venv', 'source kept from memory');
     assert.strictEqual(row.connected, false);
     assert.deepStrictEqual(row.menu, ['connect-to-sdk'], 'SDK slots exist');
-  });
-
-  test('declared fallback applies when nothing is remembered (post Turn Off → Launch)', () => {
-    const sections = build({
-      snapshot: snapshot({
-        plugs: [{ ...plugRef('jupyter', 'venv') }],
-        slots: [{ ...HOST_SLOT }, { ...slotRef('uv', 'venv'), attrs: { 'workshop-source': '/home/workshop/uv-venv' } }],
-      }),
-      declared: [declared('jupyter:venv', 'uv:venv')],
-    });
-
-    const row = sections[0].rows[0];
-    assert.deepStrictEqual(row.slot, slotRef('uv', 'venv'));
-    assert.strictEqual(row.source, '/home/workshop/uv-venv', 'source from the live slot attrs');
   });
 
   test('an undesired pairing is a disconnected row that keeps its identity and section', () => {
@@ -268,34 +244,16 @@ suite('sdkSlotCandidates / fallbackTarget', () => {
     assert.deepStrictEqual(candidates.map((s) => `${s.sdk}:${s.slot}`), ['go:share', 'uv:venv']);
   });
 
-  test('fallback offers the declared slot when live and different from the failed one', () => {
-    const snap = snapshot({ slots: [{ ...HOST_SLOT }, { ...slotRef('uv', 'venv') }] });
-    const target = fallbackTarget(
-      slotRef('go', 'share'), // the pairing that just failed
-      plugRef('jupyter', 'venv'),
-      [declared('jupyter:venv', 'uv:venv')],
-      snap,
-    );
-    assert.deepStrictEqual(target, slotRef('uv', 'venv'));
-  });
-
-  test('fallback degrades to the host when declared is dead, same, or absent', () => {
-    const snap = snapshot({ slots: [{ ...HOST_SLOT }] });
-    // Declared slot not live → host.
+  test('fallback offers the host when the failed pairing is not the host', () => {
     assert.deepStrictEqual(
-      fallbackTarget(slotRef('go', 'share'), plugRef('jupyter', 'venv'), [declared('jupyter:venv', 'uv:venv')], snap),
-      HOST_SLOT,
-    );
-    // Declared slot is the one that failed → host.
-    assert.deepStrictEqual(
-      fallbackTarget(slotRef('uv', 'venv'), plugRef('jupyter', 'venv'), [declared('jupyter:venv', 'uv:venv')], snapshot({ slots: [{ ...HOST_SLOT }, { ...slotRef('uv', 'venv') }] })),
+      fallbackTarget(slotRef('uv', 'venv'), plugRef('jupyter', 'venv')),
       HOST_SLOT,
     );
   });
 
-  test('no modal target when the host pairing itself failed and nothing else differs', () => {
+  test('no modal target when the host pairing itself failed', () => {
     assert.strictEqual(
-      fallbackTarget(HOST_SLOT, plugRef('node', 'npm-cache'), [], snapshot({ slots: [{ ...HOST_SLOT }] })),
+      fallbackTarget(HOST_SLOT, plugRef('node', 'npm-cache')),
       undefined,
     );
   });
