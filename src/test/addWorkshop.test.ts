@@ -9,6 +9,7 @@ import { InitError, InitSpec } from '../api/init';
 import { LogsView } from '../ui/logsView';
 import { WizardDeps, WizardResult } from '../ui/addWorkshopWizard';
 import { createWorkshopCommands } from '../workshopCommands';
+import { ProjectContext } from '../workspaceContext';
 
 class MemoryMemento implements vscode.Memento {
   private store = new Map<string, unknown>();
@@ -88,6 +89,10 @@ suite('addWorkshop command', () => {
   }) {
     return createWorkshopCommands({
       client: new WorkshopClient({ socketPath: path.join(tmp, 'missing.socket') }),
+      projects: new ProjectContext(
+        new WorkshopClient({ socketPath: path.join(tmp, 'missing.socket') }),
+        new MemoryMemento(),
+      ),
       globalState: new MemoryMemento(),
       log,
       logsView: new LogsView(),
