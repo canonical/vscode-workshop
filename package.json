@@ -49,6 +49,13 @@
           "title": "Workshop",
           "icon": "media/workshop.svg"
         }
+      ],
+      "panel": [
+        {
+          "id": "workshop-panel",
+          "title": "Workshop",
+          "icon": "media/workshop.svg"
+        }
       ]
     },
     "views": {
@@ -58,6 +65,13 @@
           "name": "Workshops",
           "icon": "media/workshop.svg",
           "contextualTitle": "Workshop"
+        }
+      ],
+      "workshop-panel": [
+        {
+          "type": "webview",
+          "id": "workshop.mounts",
+          "name": "Workshop"
         }
       ]
     },
