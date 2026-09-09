@@ -34,8 +34,6 @@ export interface PanelStateInput {
   selected?: string;
   /** Display status of the selected workshop. */
   status?: Status;
-  /** True while this workshop's guided remount (stop→remount→start) runs. */
-  guidedRemount?: boolean;
   /**
    * The kind of a matched in-progress *lifecycle* change (launch, refresh,
    * …). MUST be unset for row-level kinds (connect, disconnect, remount) —
@@ -64,9 +62,6 @@ export function derivePanelState(input: PanelStateInput): PanelState {
       kind: 'message',
       text: input.selected === undefined ? MSG_LOADING : workshopGoneMessage(input.selected),
     };
-  }
-  if (input.guidedRemount === true) {
-    return { kind: 'message', text: pendingMessage('remount') };
   }
   if (input.pendingKind !== undefined) {
     return { kind: 'message', text: pendingMessage(input.pendingKind) };
