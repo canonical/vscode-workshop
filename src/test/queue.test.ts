@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 
-import { WorkshopOperationQueue } from '../mounts/queue';
+import { WorkshopOperationQueue } from '../interfaces/queue';
 
 function deferred<T>(): { promise: Promise<T>; resolve: (v: T) => void; reject: (e: Error) => void } {
   let resolve!: (v: T) => void;
