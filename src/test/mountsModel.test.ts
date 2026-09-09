@@ -204,14 +204,39 @@ suite('buildSections', () => {
     assert.deepStrictEqual(withSdk[0].rows[0].menu, ['remount', 'connect-to-sdk']);
     assert.deepStrictEqual(withoutSdk[0].rows[0].menu, ['remount']);
   });
+
+  test('connect-to-sdk ignores SDK slots on a different interface', () => {
+    const base = {
+      established: [{ plug: plugRef('node', 'npm-cache'), slot: HOST_SLOT, interface: 'mount' }],
+      plugs: [{ ...plugRef('node', 'npm-cache'), interface: 'mount' }],
+    };
+    const sameIface = build({
+      snapshot: snapshot({ ...base, slots: [{ ...HOST_SLOT }, { ...slotRef('uv', 'venv'), interface: 'mount' }] }),
+    });
+    const otherIface = build({
+      snapshot: snapshot({ ...base, slots: [{ ...HOST_SLOT }, { ...slotRef('net', 'link'), interface: 'tunnel' }] }),
+    });
+
+    assert.deepStrictEqual(sameIface[0].rows[0].menu, ['remount', 'connect-to-sdk']);
+    assert.deepStrictEqual(otherIface[0].rows[0].menu, ['remount'], 'a tunnel slot is not a mount candidate');
+  });
 });
 
 suite('sdkSlotCandidates / fallbackTarget', () => {
-  test('candidates are the non-system mount slots, sorted', () => {
+  test('candidates are the non-system slots on the given interface, sorted', () => {
     const candidates = sdkSlotCandidates(snapshot({
-      slots: [{ ...HOST_SLOT }, { ...slotRef('uv', 'venv') }, { ...slotRef('go', 'share') }],
-    }));
-    assert.deepStrictEqual(candidates.map((s) => `${s.sdk}:${s.slot}`), ['go:share', 'uv:venv']);
+      slots: [
+        { ...HOST_SLOT },
+        { ...slotRef('uv', 'venv'), interface: 'mount' },
+        { ...slotRef('go', 'share'), interface: 'mount' },
+        { ...slotRef('net', 'link'), interface: 'tunnel' },
+      ],
+    }), 'mount');
+    assert.deepStrictEqual(
+      candidates.map((s) => `${s.sdk}:${s.slot}`),
+      ['go:share', 'uv:venv'],
+      'host and other-interface slots are excluded',
+    );
   });
 
   test('fallback offers the host when the failed pairing is not the host', () => {
