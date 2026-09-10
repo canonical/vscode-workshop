@@ -1,0 +1,12 @@
+{
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "screenshots": "node run.ts",
+    "screenshots:xvfb": "XVFB=1 xvfb-run -a -s '-screen 0 1680x1050x24' node run.ts",
+    "check": "tsc -p ."
+  },
+  "devDependencies": {
+    "playwright-core": "^1.63.0"
+  }
+}
