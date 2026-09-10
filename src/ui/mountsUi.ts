@@ -35,9 +35,5 @@ export function createMountsUi(): MountsUi {
       );
       return choice === confirmLabel;
     },
-
-    async pickSlot(title, items) {
-      return vscode.window.showQuickPick(items, { title });
-    },
   };
 }

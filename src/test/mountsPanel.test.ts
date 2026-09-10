@@ -60,8 +60,12 @@ suite('mounts webview protocol guard', () => {
   test('accepts each well-formed message', () => {
     assert.ok(isWebviewToExt({ type: 'ready' }));
     assert.ok(isWebviewToExt({ type: 'toggle', rowId: 'r', desired: true }));
-    assert.ok(isWebviewToExt({ type: 'menu', rowId: 'r', action: 'remount' }));
-    assert.ok(isWebviewToExt({ type: 'menu', rowId: 'r', action: 'connect-to-sdk' }));
+    assert.ok(isWebviewToExt({ type: 'menu', rowId: 'r', action: { kind: 'remount' } }));
+    assert.ok(isWebviewToExt({
+      type: 'menu',
+      rowId: 'r',
+      action: { kind: 'connect', slot: { 'project-id': 'p1', workshop: 'dev', sdk: 'uv', slot: 'venv' } },
+    }));
     assert.ok(isWebviewToExt({ type: 'reveal', path: '/x' }));
   });
 
@@ -70,7 +74,8 @@ suite('mounts webview protocol guard', () => {
     assert.ok(!isWebviewToExt('ready'));
     assert.ok(!isWebviewToExt({ type: 'nope' }));
     assert.ok(!isWebviewToExt({ type: 'toggle', rowId: 'r', desired: 'yes' }));
-    assert.ok(!isWebviewToExt({ type: 'menu', rowId: 'r', action: 'delete-everything' }));
+    assert.ok(!isWebviewToExt({ type: 'menu', rowId: 'r', action: 'remount' }), 'a string action is not a menu item');
+    assert.ok(!isWebviewToExt({ type: 'menu', rowId: 'r', action: { kind: 'connect' } }), 'connect needs a slot');
     assert.ok(!isWebviewToExt({ type: 'reveal', path: 42 }));
   });
 });
@@ -203,18 +208,28 @@ suite('MountsPanelProvider', () => {
         invoked.push(action);
       },
     };
-    // The row is an internal mount: no remount in its menu.
+    const uvVenv = { 'project-id': 'p1', workshop: 'dev', sdk: 'uv', slot: 'venv' };
+    // The row is a disconnected internal mount: no remount, only a connect target.
     const { provider } = makeProvider({
-      data: () => tableData([row({ id: 'workshop|jupyter:venv|uv:venv', section: 'workshop', menu: ['connect-to-sdk'] })]),
+      data: () => tableData([row({
+        id: 'workshop|jupyter:venv|uv:venv',
+        section: 'workshop',
+        connected: false,
+        menu: [{ kind: 'connect', slot: uvVenv }],
+      })]),
       actions,
     });
     await provider.handleMessage({ type: 'ready' });
 
-    await provider.handleMessage({ type: 'menu', rowId: 'workshop|jupyter:venv|uv:venv', action: 'remount' });
+    await provider.handleMessage({ type: 'menu', rowId: 'workshop|jupyter:venv|uv:venv', action: { kind: 'remount' } });
     assert.deepStrictEqual(invoked, [], 'remount on an internal mount is dropped');
 
-    await provider.handleMessage({ type: 'menu', rowId: 'workshop|jupyter:venv|uv:venv', action: 'connect-to-sdk' });
-    assert.deepStrictEqual(invoked, ['connect-to-sdk']);
+    await provider.handleMessage({
+      type: 'menu',
+      rowId: 'workshop|jupyter:venv|uv:venv',
+      action: { kind: 'connect', slot: uvVenv },
+    });
+    assert.deepStrictEqual(invoked, [{ kind: 'connect', slot: uvVenv }]);
     provider.dispose();
   });
 
