@@ -1,4 +1,6 @@
+import { isSlotRef } from '../api/connections';
 import { PanelData } from './data';
+import { MountMenuItem } from './model';
 
 /**
  * The message protocol between the extension host and the mounts webview.
@@ -13,7 +15,8 @@ export type ExtToWebview =
   /** Settles a whole toggle burst for one row (ok:false → snap back). */
   | { type: 'actionResult'; rowId: string; ok: boolean };
 
-export type MenuAction = 'remount' | 'connect-to-sdk';
+/** A menu choice: remount, or connect the row's plug to a specific slot. */
+export type MenuAction = MountMenuItem;
 
 export type WebviewToExt =
   | { type: 'ready' }
@@ -24,8 +27,6 @@ export type WebviewToExt =
   | { type: 'toggle'; rowId: string; desired: boolean }
   | { type: 'menu'; rowId: string; action: MenuAction }
   | { type: 'reveal'; path: string };
-
-const MENU_ACTIONS: readonly string[] = ['remount', 'connect-to-sdk'];
 
 /** Validate a message received from the webview. */
 export function isWebviewToExt(message: unknown): message is WebviewToExt {
@@ -39,12 +40,21 @@ export function isWebviewToExt(message: unknown): message is WebviewToExt {
     case 'toggle':
       return typeof msg.rowId === 'string' && typeof msg.desired === 'boolean';
     case 'menu':
-      return typeof msg.rowId === 'string'
-        && typeof msg.action === 'string'
-        && MENU_ACTIONS.includes(msg.action);
+      return typeof msg.rowId === 'string' && isMenuAction(msg.action);
     case 'reveal':
       return typeof msg.path === 'string';
     default:
       return false;
   }
+}
+
+function isMenuAction(value: unknown): value is MenuAction {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const action = value as Record<string, unknown>;
+  if (action.kind === 'remount') {
+    return true;
+  }
+  return action.kind === 'connect' && isSlotRef(action.slot);
 }
