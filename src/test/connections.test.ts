@@ -11,6 +11,7 @@ import {
 } from '../api/client';
 import {
   attrString,
+  displayKey,
   isHostSlot,
   makeSlotRef,
   normalizeConnections,
@@ -95,8 +96,10 @@ suite('normalizeConnections', () => {
   });
 
   test('helpers: keys, host slot, attrString, makeSlotRef', () => {
-    assert.strictEqual(plugKey(PLUG), 'node:npm-cache');
-    assert.strictEqual(slotKey(HOST_SLOT), 'system:mount');
+    assert.strictEqual(plugKey(PLUG), 'p1|dev|node|npm-cache');
+    assert.strictEqual(slotKey(HOST_SLOT), 'p1|dev|system|mount');
+    assert.strictEqual(displayKey(PLUG), 'node:npm-cache');
+    assert.strictEqual(displayKey(HOST_SLOT), 'system:mount');
     assert.ok(isHostSlot(HOST_SLOT));
     assert.ok(!isHostSlot(SDK_SLOT));
     assert.strictEqual(attrString({ x: 5 }, 'x'), undefined);
