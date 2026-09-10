@@ -1,5 +1,5 @@
 import { isChangeConflict, WorkshopClient } from '../api/client';
-import { displayKey, makeSlotRef, plugKey, SlotRef } from '../api/connections';
+import { displayKey, makeSlotRef, SlotRef } from '../api/connections';
 import { fallbackTarget, MountRow, sdkSlotCandidates } from './model';
 import { MenuAction } from './protocol';
 import { WorkshopOperationQueue } from './queue';
@@ -135,15 +135,11 @@ export function createMountsActions(deps: MountsActionsDeps): {
   async function connectToSdk(row: MountRow): Promise<void> {
     const projectId = row.plug['project-id'];
     const workshop = row.plug.workshop;
-    const key = plugKey(row.plug);
     const label = displayKey(row.plug);
     let candidates;
     try {
       const snapshot = await client.getConnections(projectId, workshop);
-      // A plug and slot must share an interface to be connectable; the plug's
-      // interface comes from its snapshot entry.
-      const iface = snapshot.plugs.find((plug) => plugKey(plug) === key)?.interface;
-      candidates = sdkSlotCandidates(snapshot, iface);
+      candidates = sdkSlotCandidates(snapshot, row.plug);
     } catch (err) {
       fail('Connect to SDK', err);
     }

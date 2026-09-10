@@ -86,7 +86,7 @@ export function buildSections(input: BuildSectionsInput): MountSection[] {
     connectedPlugs.add(key);
     // Connect to SDK offers only slots on this plug's own interface — a plug
     // and slot must share an interface to be connectable.
-    const candidates = sdkSlotCandidates(snapshot, entry.interface);
+    const candidates = sdkSlotCandidates(snapshot, entry.plug);
     const target = attrString(entry['plug-attrs'], 'workshop-target')
       ?? attrString(findPlug(snapshot, entry.plug)?.attrs, 'workshop-target')
       ?? input.mounts[key]?.workshopTarget;
@@ -136,7 +136,7 @@ export function buildSections(input: BuildSectionsInput): MountSection[] {
     if (connectedPlugs.has(key)) {
       continue;
     }
-    const candidates = sdkSlotCandidates(snapshot, plugInfo.interface);
+    const candidates = sdkSlotCandidates(snapshot, plugInfo);
     const source = input.mounts[key]?.hostSource;
     hostRows.push(makeRow({
       section: 'host',
@@ -232,17 +232,22 @@ function findPlug(snapshot: ConnectionsSnapshot, ref: PlugRef): PlugInfo | undef
 }
 
 /**
- * SDK-provided mount slots a plug on `iface` could be wired to: every
- * non-`system` slot on the *same* interface ("a compatible SDK slot exists =
- * at least one mount slot on a non-system SDK"). A plug and slot must share an
- * interface to be connectable. Sorted by SDK then slot name.
+ * SDK-provided mount slots `plug` could be wired to: every non-`system` slot
+ * on the plug's interface, minus any slot the plug is already connected to. A
+ * plug and slot must share an interface to be connectable. Sorted by SDK then
+ * slot name.
  */
 export function sdkSlotCandidates(
   snapshot: ConnectionsSnapshot,
-  iface: string | undefined,
+  plug: PlugRef,
 ): SlotInfo[] {
+  const info = findPlug(snapshot, plug);
+  const connected = new Set((info?.connections ?? []).map(slotKey));
   return snapshot.slots
-    .filter((slot) => !isHostSlot(slot) && slot.interface === iface)
+    .filter((slot) =>
+      !isHostSlot(slot)
+      && slot.interface === info?.interface
+      && !connected.has(slotKey(slot)))
     .sort((a, b) => a.sdk.localeCompare(b.sdk) || a.slot.localeCompare(b.slot));
 }
 
