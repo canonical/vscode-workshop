@@ -1,6 +1,7 @@
 import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 
+import { slotKey } from '../api/connections';
 import { PanelData } from '../interfaces/data';
 import { MountRow } from '../interfaces/model';
 import { ExtToWebview, isWebviewToExt, MenuAction } from '../interfaces/protocol';
@@ -206,8 +207,8 @@ export class MountsPanelProvider implements vscode.WebviewViewProvider, vscode.D
     const row = this.findRow(rowId);
     // Re-validate against the row's own menu: the webview is untrusted, and
     // e.g. Remount must never run on an internal mount.
-    if (row === undefined || !row.menu.includes(action)) {
-      this.deps.log.warn(`Mounts panel dropped menu action ${action} for ${rowId}`);
+    if (row === undefined || !menuHasAction(row, action)) {
+      this.deps.log.warn(`Mounts panel dropped menu action ${action.kind} for ${rowId}`);
       return;
     }
     if (this.menuInFlight.has(rowId)) {
@@ -258,6 +259,15 @@ export class MountsPanelProvider implements vscode.WebviewViewProvider, vscode.D
     this.activationHandle = undefined;
     this.poller.dispose();
   }
+}
+
+/** Whether `action` corresponds to a real menu item on the row. */
+function menuHasAction(row: MountRow, action: MenuAction): boolean {
+  if (action.kind === 'remount') {
+    return row.menu.some((item) => item.kind === 'remount');
+  }
+  const target = slotKey(action.slot);
+  return row.menu.some((item) => item.kind === 'connect' && slotKey(item.slot) === target);
 }
 
 /** Webview surface needed to build the page — test-friendly subset. */

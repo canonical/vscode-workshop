@@ -64,7 +64,7 @@ suite('buildSections', () => {
     assert.strictEqual(row.sourceSub, 'system:mount');
     assert.strictEqual(row.target, '/home/workshop/.npm/_cacache');
     assert.strictEqual(row.targetSub, 'node:npm-cache');
-    assert.deepStrictEqual(row.menu, ['remount'], 'no SDK slots → remount only');
+    assert.deepStrictEqual(row.menu, [{ kind: 'remount' }], 'no SDK slots → remount only');
   });
 
   test('an internal SDK↔SDK mount renders in Workshop, listed first, with no menu', () => {
@@ -130,7 +130,11 @@ suite('buildSections', () => {
     assert.strictEqual(row.connected, false);
     assert.deepStrictEqual(row.slot, slotRef('uv', 'venv'));
     assert.strictEqual(row.source, '/home/workshop/uv-venv', 'source from undesired slot-attrs');
-    assert.deepStrictEqual(row.menu, ['connect-to-sdk'], 'SDK slots exist');
+    assert.deepStrictEqual(
+      row.menu,
+      [{ kind: 'connect', slot: slotRef('uv', 'venv') }],
+      'a disconnected row offers its candidate SDK slots',
+    );
   });
 
   test('dual wiring: host + SDK wirings of one plug are two independent rows (AC 13)', () => {
@@ -189,7 +193,7 @@ suite('buildSections', () => {
     assert.deepStrictEqual(build({ snapshot: snapshot({}) }), []);
   });
 
-  test('connect-to-sdk appears on a connected host row only when SDK slots exist', () => {
+  test('a connected host row offers only remount, never a connect target', () => {
     const base = {
       established: [{ plug: plugRef('node', 'npm-cache'), slot: HOST_SLOT }],
       plugs: [{ ...plugRef('node', 'npm-cache') }],
@@ -201,13 +205,12 @@ suite('buildSections', () => {
       snapshot: snapshot({ ...base, slots: [{ ...HOST_SLOT }] }),
     });
 
-    assert.deepStrictEqual(withSdk[0].rows[0].menu, ['remount', 'connect-to-sdk']);
-    assert.deepStrictEqual(withoutSdk[0].rows[0].menu, ['remount']);
+    assert.deepStrictEqual(withSdk[0].rows[0].menu, [{ kind: 'remount' }]);
+    assert.deepStrictEqual(withoutSdk[0].rows[0].menu, [{ kind: 'remount' }]);
   });
 
-  test('connect-to-sdk ignores SDK slots on a different interface', () => {
+  test('connect candidates on a disconnected row ignore other-interface slots', () => {
     const base = {
-      established: [{ plug: plugRef('node', 'npm-cache'), slot: HOST_SLOT, interface: 'mount' }],
       plugs: [{ ...plugRef('node', 'npm-cache'), interface: 'mount' }],
     };
     const sameIface = build({
@@ -217,8 +220,11 @@ suite('buildSections', () => {
       snapshot: snapshot({ ...base, slots: [{ ...HOST_SLOT }, { ...slotRef('net', 'link'), interface: 'tunnel' }] }),
     });
 
-    assert.deepStrictEqual(sameIface[0].rows[0].menu, ['remount', 'connect-to-sdk']);
-    assert.deepStrictEqual(otherIface[0].rows[0].menu, ['remount'], 'a tunnel slot is not a mount candidate');
+    assert.deepStrictEqual(
+      sameIface[0].rows[0].menu,
+      [{ kind: 'connect', slot: slotRef('uv', 'venv') }],
+    );
+    assert.deepStrictEqual(otherIface[0].rows[0].menu, [], 'a tunnel slot is not a mount candidate');
   });
 });
 

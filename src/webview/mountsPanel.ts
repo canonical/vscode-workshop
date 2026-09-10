@@ -1,7 +1,8 @@
+import { displayKey } from '../api/connections';
 import { PanelData } from '../interfaces/data';
-import { MountRow, MountSection } from '../interfaces/model';
+import { MountMenuItem, MountRow, MountSection } from '../interfaces/model';
 import { MSG_DEVICES, MSG_LOADING } from '../interfaces/panelState';
-import { ExtToWebview, MenuAction, WebviewToExt } from '../interfaces/protocol';
+import { ExtToWebview, WebviewToExt } from '../interfaces/protocol';
 
 /**
  * The mounts webview script: a dumb renderer over the provider-pushed
@@ -25,10 +26,10 @@ const CHECK_SVG = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path
 const CROSS_SVG = '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4.5 4.5l7 7m0-7l-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
 const DOTS_SVG = '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="3" cy="8" r="1.4"/><circle cx="8" cy="8" r="1.4"/><circle cx="13" cy="8" r="1.4"/></svg>';
 
-const MENU_LABELS: Record<MenuAction, string> = {
-  remount: 'Remount',
-  'connect-to-sdk': 'Connect to SDK',
-};
+/** The menu label for one row item. */
+function menuLabel(item: MountMenuItem): string {
+  return item.kind === 'remount' ? 'Remount' : `Connect to ${displayKey(item.slot)}`;
+}
 
 const EM_DASH = '—';
 
@@ -276,7 +277,7 @@ function openMenu(row: MountRow, x: number, y: number, anchor: HTMLElement): voi
     item.className = 'mi';
     item.setAttribute('role', 'menuitem');
     item.tabIndex = -1;
-    item.textContent = MENU_LABELS[action];
+    item.textContent = menuLabel(action);
     item.addEventListener('click', () => onMenuAction(row, action));
     item.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' || event.key === ' ') {
@@ -295,7 +296,7 @@ function openMenu(row: MountRow, x: number, y: number, anchor: HTMLElement): voi
   (menuEl.firstElementChild as HTMLElement | null)?.focus();
 }
 
-function onMenuAction(row: MountRow, action: MenuAction): void {
+function onMenuAction(row: MountRow, action: MountMenuItem): void {
   closeMenu(true);
   vscode.postMessage({ type: 'menu', rowId: row.id, action });
 }

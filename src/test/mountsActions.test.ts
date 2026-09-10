@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 
 import { WorkshopApiError } from '../api/client';
-import { ConnectionsSnapshot, PlugRef, SlotRef } from '../api/connections';
+import { PlugRef, SlotRef } from '../api/connections';
 import { createMountsActions, MountsActionsDeps, MountsUi } from '../interfaces/actions';
 import { MountRow } from '../interfaces/model';
 import { WorkshopOperationQueue } from '../interfaces/queue';
@@ -29,7 +29,7 @@ function hostRow(overrides?: Partial<MountRow>): MountRow {
     source: '/data/id/12345678/dev/mount/node/npm-cache',
     sourceSub: 'system:mount',
     targetSub: 'node:npm-cache',
-    menu: ['remount'],
+    menu: [{ kind: 'remount' }],
     ...overrides,
   };
 }
@@ -37,7 +37,6 @@ function hostRow(overrides?: Partial<MountRow>): MountRow {
 interface UiScript {
   confirm?: boolean;
   folder?: string;
-  slotPick?: string;
 }
 
 function makeUi(script: UiScript): MountsUi & {
@@ -45,14 +44,12 @@ function makeUi(script: UiScript): MountsUi & {
   modals: { message: string; detail: string; confirm: string }[];
   progressTitles: string[];
   folderRequests: { title: string; openLabel: string }[];
-  slotPicks: { title: string; items: string[] }[];
 } {
   return {
     errors: [],
     modals: [],
     progressTitles: [],
     folderRequests: [],
-    slotPicks: [],
     showError(message) {
       this.errors.push(message);
     },
@@ -68,17 +65,12 @@ function makeUi(script: UiScript): MountsUi & {
       this.modals.push({ message, detail, confirm });
       return script.confirm ?? false;
     },
-    async pickSlot(title, items) {
-      this.slotPicks.push({ title, items });
-      return script.slotPick;
-    },
   };
 }
 
 interface ClientScript {
   connectResults?: (Error | undefined)[];
   remountResults?: (Error | undefined)[];
-  snapshot?: ConnectionsSnapshot;
 }
 
 function makeClient(script: ClientScript) {
@@ -113,10 +105,6 @@ function makeClient(script: ClientScript) {
       const error = script.remountResults?.[remountIndex];
       remountIndex += 1;
       return track(`remount:${plug.sdk}:${plug.plug}->${hostSource}`, error ?? done);
-    },
-    async getConnections() {
-      calls.push('getConnections');
-      return script.snapshot ?? { established: [], undesired: [], plugs: [], slots: [] };
     },
   };
 }
@@ -242,7 +230,7 @@ suite('mounts actions — toggle', () => {
 suite('mounts actions — remount', () => {
   test('cancelling the folder picker changes nothing', async () => {
     const { actions, client, ui } = makeActions({}, { folder: undefined });
-    await actions.menu(hostRow(), 'remount');
+    await actions.menu(hostRow(), { kind: 'remount' });
 
     assert.deepStrictEqual(ui.folderRequests, [{ title: 'Remount node:npm-cache', openLabel: 'Remount here' }]);
     assert.ok(!client.calls.some((c) => c.startsWith('remount:')));
@@ -250,7 +238,7 @@ suite('mounts actions — remount', () => {
 
   test('a chosen folder remounts under progress', async () => {
     const { actions, client, ui } = makeActions({}, { folder: '/backups/data' });
-    await actions.menu(hostRow(), 'remount');
+    await actions.menu(hostRow(), { kind: 'remount' });
 
     assert.deepStrictEqual(ui.progressTitles, ['Remounting node:npm-cache']);
     assert.ok(client.calls.includes('remount:node:npm-cache->/backups/data'));
@@ -262,7 +250,7 @@ suite('mounts actions — remount', () => {
       { remountResults: [new WorkshopApiError('cross-device', 400)] },
       { folder: '/backups/data' },
     );
-    await assert.rejects(() => actions.menu(hostRow(), 'remount'), /cross-device/);
+    await assert.rejects(() => actions.menu(hostRow(), { kind: 'remount' }), /cross-device/);
 
     assert.ok(client.calls.includes('remount:node:npm-cache->/backups/data'));
     assert.deepStrictEqual(ui.errors, ['Remount failed: cross-device']);
@@ -270,53 +258,28 @@ suite('mounts actions — remount', () => {
 });
 
 suite('mounts actions — connect to SDK', () => {
-  const row = hostRow({ menu: ['remount', 'connect-to-sdk'] });
+  const disconnected = hostRow({
+    connected: false,
+    menu: [{ kind: 'connect', slot: slotRef('uv', 'venv') }],
+  });
 
-  function withSlots(slots: SlotRef[]): ConnectionsSnapshot {
-    return {
-      established: [],
-      undesired: [],
-      plugs: [{ ...plugRef('node', 'npm-cache'), interface: 'mount' }],
-      slots: slots.map((slot) => ({ ...slot, interface: 'mount' })),
-    };
-  }
+  test('connects the plug to the chosen slot under progress', async () => {
+    const { actions, client, ui } = makeActions({}, {});
+    await actions.menu(disconnected, { kind: 'connect', slot: slotRef('uv', 'venv') });
 
-  test('one candidate connects without asking', async () => {
-    const { actions, client, ui } = makeActions(
-      { snapshot: withSlots([HOST_SLOT, slotRef('uv', 'venv')]) },
-      {},
-    );
-    await actions.menu(row, 'connect-to-sdk');
-
-    assert.deepStrictEqual(ui.slotPicks, []);
     assert.ok(client.calls.includes('connect:node:npm-cache->uv:venv'));
     assert.deepStrictEqual(ui.progressTitles, ['Connecting node:npm-cache to uv:venv']);
   });
 
-  test('several candidates go through the QuickPick; cancel changes nothing', async () => {
-    const snapshot = withSlots([HOST_SLOT, slotRef('uv', 'venv'), slotRef('go', 'share')]);
-    const cancelled = makeActions({ snapshot }, { slotPick: undefined });
-    await cancelled.actions.menu(row, 'connect-to-sdk');
-    assert.deepStrictEqual(cancelled.ui.slotPicks, [{
-      title: 'Connect node:npm-cache to…',
-      items: ['go:share', 'uv:venv'],
-    }]);
-    assert.ok(!cancelled.client.calls.some((c) => c.startsWith('connect:')));
-
-    const picked = makeActions({ snapshot }, { slotPick: 'go:share' });
-    await picked.actions.menu(row, 'connect-to-sdk');
-    assert.ok(picked.client.calls.includes('connect:node:npm-cache->go:share'));
-  });
-
   test('failure shows the operation-named toast', async () => {
     const { actions, ui } = makeActions(
-      {
-        snapshot: withSlots([slotRef('uv', 'venv')]),
-        connectResults: [new WorkshopApiError('refused', 400)],
-      },
+      { connectResults: [new WorkshopApiError('refused', 400)] },
       {},
     );
-    await assert.rejects(() => actions.menu(row, 'connect-to-sdk'), /refused/);
+    await assert.rejects(
+      () => actions.menu(disconnected, { kind: 'connect', slot: slotRef('uv', 'venv') }),
+      /refused/,
+    );
     assert.deepStrictEqual(ui.errors, ['Connect to SDK failed: refused']);
   });
 });
