@@ -50,7 +50,7 @@ suite('buildSections', () => {
         plugs: [{ ...plugRef('node', 'npm-cache'), attrs: { 'workshop-target': '/home/workshop/.npm/_cacache' } }],
         slots: [{ ...HOST_SLOT }],
       }),
-      mounts: { 'node:npm-cache': { hostSource: '/data/id/86e64b3e/dev/mount/node/npm-cache' } },
+      mounts: { 'p1|dev|node|npm-cache': { hostSource: '/data/id/86e64b3e/dev/mount/node/npm-cache' } },
     });
 
     assert.strictEqual(sections.length, 1);

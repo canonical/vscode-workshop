@@ -2,6 +2,7 @@ import {
   attrString,
   ConnectionEntry,
   ConnectionsSnapshot,
+  displayKey,
   isHostSlot,
   makeSlotRef,
   PlugInfo,
@@ -200,9 +201,9 @@ function makeRow(
     connected: row.connected,
     source: row.source,
     sourceDisplay: row.sourceDisplay,
-    sourceSub: slotKey(row.slot),
+    sourceSub: displayKey(row.slot),
     target: row.target,
-    targetSub: plugKey(row.plug),
+    targetSub: displayKey(row.plug),
     menu: row.menu,
   };
 }
@@ -210,8 +211,8 @@ function makeRow(
 /** Stable row identity: section, plug channel, and pairing target. */
 export function rowId(
   section: 'workshop' | 'host',
-  plug: Pick<PlugRef, 'sdk' | 'plug'>,
-  slot: Pick<SlotRef, 'sdk' | 'slot'>,
+  plug: PlugRef,
+  slot: SlotRef,
 ): string {
   return `${section}|${plugKey(plug)}|${slotKey(slot)}`;
 }
