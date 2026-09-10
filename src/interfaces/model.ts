@@ -74,26 +74,30 @@ export interface BuildSectionsInput {
 }
 
 /**
- * Build the table sections. Iterates the daemon's connection lists — one row
- * per connection, established or `undesired` (disconnected-with-identity) —
- * exactly as the `workshop connections` client does, so a plug wired to
- * several slots yields a row each. A plug the daemon lists with no connection
- * at all becomes a default disconnected host row. Rows sort by SDK name then
- * plug name; sections with no rows are omitted.
+ * Build the table sections. A plug is wired to exactly one place at a time,
+ * so it gets exactly one row, never one per section: an established
+ * connection wins over an `undesired` one (disconnected-with-identity, e.g. a
+ * stale "don't reconnect to the host" memory left over from a since-moved
+ * plug), which wins over the default disconnected host row for a plug the
+ * daemon lists with no connection at all. Rows sort by SDK name then plug
+ * name; sections with no rows are omitted.
  */
 export function buildSections(input: BuildSectionsInput): MountSection[] {
   const { snapshot } = input;
   const workshopRows: MountRow[] = [];
   const hostRows: MountRow[] = [];
-  // Plugs that already have a connection row; a plug with none becomes a
-  // default host row below.
-  const connectedPlugs = new Set<string>();
+  // Plugs that already have a row; a plug with none becomes a default host
+  // row below. Established rows are added first, so they win ties.
+  const handledPlugs = new Set<string>();
 
   const addConnectionRow = (entry: ConnectionEntry, connected: boolean): void => {
     const key = plugKey(entry.plug);
-    connectedPlugs.add(key);
-    // Connect to SDK offers only slots on this plug's own interface — a plug
-    // and slot must share an interface to be connectable.
+    if (handledPlugs.has(key)) {
+      return;
+    }
+    handledPlugs.add(key);
+    // A connect target must share the plug's interface; the row's own
+    // current slot is excluded — the switch already handles that pairing.
     const candidates = sdkSlotCandidates(snapshot, entry.plug);
     const target = attrString(entry['plug-attrs'], 'workshop-target')
       ?? attrString(findPlug(snapshot, entry.plug)?.attrs, 'workshop-target')
@@ -110,7 +114,7 @@ export function buildSections(input: BuildSectionsInput): MountSection[] {
         source,
         sourceDisplay: source !== undefined ? shortenHostPath(source) : undefined,
         target,
-        menu: connected ? [{ kind: 'remount' }] : connectItems(candidates),
+        menu: connected ? [{ kind: 'remount' }] : connectItems(candidates, entry.slot),
       }));
     } else {
       const source = attrString(entry['slot-attrs'], 'workshop-source')
@@ -123,7 +127,7 @@ export function buildSections(input: BuildSectionsInput): MountSection[] {
         source,
         sourceDisplay: undefined,
         target,
-        menu: connected ? [] : connectItems(candidates),
+        menu: connected ? [] : connectItems(candidates, entry.slot),
       }));
     }
   };
@@ -139,11 +143,12 @@ export function buildSections(input: BuildSectionsInput): MountSection[] {
   // connects to the host).
   for (const plugInfo of snapshot.plugs) {
     const key = plugKey(plugInfo);
-    if (connectedPlugs.has(key)) {
+    if (handledPlugs.has(key)) {
       continue;
     }
     const candidates = sdkSlotCandidates(snapshot, plugInfo);
     const source = input.mounts[key]?.hostSource;
+    const hostSlot = makeSlotRef(input.projectId, input.workshop, SYSTEM_SDK, 'mount');
     hostRows.push(makeRow({
       section: 'host',
       plug: {
@@ -152,12 +157,12 @@ export function buildSections(input: BuildSectionsInput): MountSection[] {
         sdk: plugInfo.sdk,
         plug: plugInfo.plug,
       },
-      slot: makeSlotRef(input.projectId, input.workshop, SYSTEM_SDK, 'mount'),
+      slot: hostSlot,
       connected: false,
       source,
       sourceDisplay: source !== undefined ? shortenHostPath(source) : undefined,
       target: attrString(plugInfo.attrs, 'workshop-target') ?? input.mounts[key]?.workshopTarget,
-      menu: connectItems(candidates),
+      menu: connectItems(candidates, hostSlot),
     }));
   }
 
@@ -223,11 +228,14 @@ export function rowId(
   return `${section}|${plugKey(plug)}|${slotKey(slot)}`;
 }
 
-function connectItems(candidates: SlotInfo[]): MountMenuItem[] {
-  return candidates.map((slot) => ({
-    kind: 'connect',
-    slot: makeSlotRef(slot['project-id'], slot.workshop, slot.sdk, slot.slot),
-  }));
+function connectItems(candidates: SlotInfo[], exclude: SlotRef): MountMenuItem[] {
+  const excludeKey = slotKey(exclude);
+  return candidates
+    .filter((slot) => slotKey(slot) !== excludeKey)
+    .map((slot) => ({
+      kind: 'connect',
+      slot: makeSlotRef(slot['project-id'], slot.workshop, slot.sdk, slot.slot),
+    }));
 }
 
 function findSlot(snapshot: ConnectionsSnapshot, ref: SlotRef): SlotInfo | undefined {
@@ -241,8 +249,8 @@ function findPlug(snapshot: ConnectionsSnapshot, ref: PlugRef): PlugInfo | undef
 }
 
 /**
- * SDK-provided mount slots `plug` could be wired to: every non-`system` slot
- * on the plug's interface, minus any slot the plug is already connected to. A
+ * Connectable mount slots for `plug`: every slot — including the host — on
+ * the plug's interface, minus any slot the plug is already connected to. A
  * plug and slot must share an interface to be connectable. Sorted by SDK then
  * slot name.
  */
@@ -254,8 +262,7 @@ export function sdkSlotCandidates(
   const connected = new Set((info?.connections ?? []).map(slotKey));
   return snapshot.slots
     .filter((slot) =>
-      !isHostSlot(slot)
-      && slot.interface === info?.interface
+      slot.interface === info?.interface
       && !connected.has(slotKey(slot)))
     .sort((a, b) => a.sdk.localeCompare(b.sdk) || a.slot.localeCompare(b.slot));
 }
