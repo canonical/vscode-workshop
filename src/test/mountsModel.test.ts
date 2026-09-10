@@ -223,19 +223,39 @@ suite('buildSections', () => {
 });
 
 suite('sdkSlotCandidates / fallbackTarget', () => {
-  test('candidates are the non-system slots on the given interface, sorted', () => {
+  test('candidates are the non-system slots on the plug interface, sorted', () => {
     const candidates = sdkSlotCandidates(snapshot({
+      plugs: [{ ...plugRef('node', 'npm-cache'), interface: 'mount' }],
       slots: [
         { ...HOST_SLOT },
         { ...slotRef('uv', 'venv'), interface: 'mount' },
         { ...slotRef('go', 'share'), interface: 'mount' },
         { ...slotRef('net', 'link'), interface: 'tunnel' },
       ],
-    }), 'mount');
+    }), plugRef('node', 'npm-cache'));
     assert.deepStrictEqual(
       candidates.map((s) => `${s.sdk}:${s.slot}`),
       ['go:share', 'uv:venv'],
       'host and other-interface slots are excluded',
+    );
+  });
+
+  test('the slot the plug is already connected to is excluded', () => {
+    const candidates = sdkSlotCandidates(snapshot({
+      plugs: [{
+        ...plugRef('node', 'npm-cache'),
+        interface: 'mount',
+        connections: [slotRef('uv', 'venv')],
+      }],
+      slots: [
+        { ...slotRef('uv', 'venv'), interface: 'mount' },
+        { ...slotRef('go', 'share'), interface: 'mount' },
+      ],
+    }), plugRef('node', 'npm-cache'));
+    assert.deepStrictEqual(
+      candidates.map((s) => `${s.sdk}:${s.slot}`),
+      ['go:share'],
+      'the already-connected slot is not offered again',
     );
   });
 
