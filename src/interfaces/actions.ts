@@ -1,6 +1,6 @@
 import { isChangeConflict, WorkshopClient } from '../api/client';
 import { displayKey, makeSlotRef, SlotRef } from '../api/connections';
-import { fallbackTarget, MountRow, sdkSlotCandidates } from './model';
+import { fallbackTarget, MountRow } from './model';
 import { MenuAction } from './protocol';
 import { WorkshopOperationQueue } from './queue';
 
@@ -16,12 +16,11 @@ export interface MountsUi {
   withProgress<T>(title: string, task: () => Promise<T>): Promise<T>;
   pickFolder(options: { title: string; openLabel: string }): Promise<string | undefined>;
   confirmModal(message: string, detail: string, confirmLabel: string): Promise<boolean>;
-  pickSlot(title: string, items: string[]): Promise<string | undefined>;
 }
 
 export type MountsActionClient = Pick<
   WorkshopClient,
-  'connectionsAction' | 'remountPlug' | 'getConnections'
+  'connectionsAction' | 'remountPlug'
 >;
 
 export interface MountsActionsDeps {
@@ -131,44 +130,14 @@ export function createMountsActions(deps: MountsActionsDeps): {
     }
   }
 
-  /** Wire the plug to an SDK-provided mount slot. */
-  async function connectToSdk(row: MountRow): Promise<void> {
+  /** Wire the plug to the chosen SDK-provided mount slot. */
+  async function connectToSlot(row: MountRow, slot: SlotRef): Promise<void> {
     const projectId = row.plug['project-id'];
     const workshop = row.plug.workshop;
-    const label = displayKey(row.plug);
-    let candidates;
+    // Strip any SlotInfo extras (attrs, connections) down to a wire-shaped ref.
+    const chosen = makeSlotRef(slot['project-id'], slot.workshop, slot.sdk, slot.slot);
     try {
-      const snapshot = await client.getConnections(projectId, workshop);
-      candidates = sdkSlotCandidates(snapshot, row.plug);
-    } catch (err) {
-      fail('Connect to SDK', err);
-    }
-    if (candidates.length === 0) {
-      return;
-    }
-
-    let target: SlotRef;
-    if (candidates.length === 1) {
-      target = candidates[0];
-    } else {
-      const picked = await ui.pickSlot(
-        `Connect ${label} to…`,
-        candidates.map((slot) => displayKey(slot)),
-      );
-      if (picked === undefined) {
-        return; // cancel changes nothing
-      }
-      const found = candidates.find((slot) => displayKey(slot) === picked);
-      if (found === undefined) {
-        return;
-      }
-      target = found;
-    }
-
-    // Strip SlotInfo extras (attrs, connections) down to a wire-shaped ref.
-    const chosen = makeSlotRef(target['project-id'], target.workshop, target.sdk, target.slot);
-    try {
-      await ui.withProgress(`Connecting ${label} to ${displayKey(chosen)}`, () =>
+      await ui.withProgress(`Connecting ${displayKey(row.plug)} to ${displayKey(chosen)}`, () =>
         queue.run(projectId, workshop, () =>
           client.connectionsAction('connect', row.plug, chosen)));
     } catch (err) {
@@ -178,6 +147,7 @@ export function createMountsActions(deps: MountsActionsDeps): {
 
   return {
     toggle,
-    menu: (row, action) => (action === 'remount' ? remount(row) : connectToSdk(row)),
+    menu: (row, action) =>
+      (action.kind === 'remount' ? remount(row) : connectToSlot(row, action.slot)),
   };
 }

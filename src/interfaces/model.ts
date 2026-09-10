@@ -41,8 +41,16 @@ export interface MountRow {
   target?: string;
   /** Sub-label under Target: `<sdk>:<plug>` of the row's plug. */
   targetSub: string;
-  menu: ('remount' | 'connect-to-sdk')[];
+  menu: MountMenuItem[];
 }
+
+/**
+ * A row's context-menu entry: remount (connected host mounts only) or connect
+ * the plug to a specific candidate SDK slot (disconnected rows only).
+ */
+export type MountMenuItem =
+  | { kind: 'remount' }
+  | { kind: 'connect'; slot: SlotRef };
 
 export interface MountSection {
   id: 'workshop' | 'host';
@@ -102,9 +110,7 @@ export function buildSections(input: BuildSectionsInput): MountSection[] {
         source,
         sourceDisplay: source !== undefined ? shortenHostPath(source) : undefined,
         target,
-        menu: connected
-          ? ['remount', ...connectToSdkMenu(candidates)]
-          : connectToSdkMenu(candidates),
+        menu: connected ? [{ kind: 'remount' }] : connectItems(candidates),
       }));
     } else {
       const source = attrString(entry['slot-attrs'], 'workshop-source')
@@ -117,7 +123,7 @@ export function buildSections(input: BuildSectionsInput): MountSection[] {
         source,
         sourceDisplay: undefined,
         target,
-        menu: connected ? [] : connectToSdkMenu(candidates),
+        menu: connected ? [] : connectItems(candidates),
       }));
     }
   };
@@ -151,7 +157,7 @@ export function buildSections(input: BuildSectionsInput): MountSection[] {
       source,
       sourceDisplay: source !== undefined ? shortenHostPath(source) : undefined,
       target: attrString(plugInfo.attrs, 'workshop-target') ?? input.mounts[key]?.workshopTarget,
-      menu: connectToSdkMenu(candidates),
+      menu: connectItems(candidates),
     }));
   }
 
@@ -189,7 +195,7 @@ function makeRow(
     source?: string;
     sourceDisplay?: string;
     target?: string;
-    menu: ('remount' | 'connect-to-sdk')[];
+    menu: MountMenuItem[];
   },
 ): MountRow {
   const id = rowId(row.section, row.plug, row.slot);
@@ -217,8 +223,11 @@ export function rowId(
   return `${section}|${plugKey(plug)}|${slotKey(slot)}`;
 }
 
-function connectToSdkMenu(candidates: SlotInfo[]): ('remount' | 'connect-to-sdk')[] {
-  return candidates.length > 0 ? ['connect-to-sdk'] : [];
+function connectItems(candidates: SlotInfo[]): MountMenuItem[] {
+  return candidates.map((slot) => ({
+    kind: 'connect',
+    slot: makeSlotRef(slot['project-id'], slot.workshop, slot.sdk, slot.slot),
+  }));
 }
 
 function findSlot(snapshot: ConnectionsSnapshot, ref: SlotRef): SlotInfo | undefined {
