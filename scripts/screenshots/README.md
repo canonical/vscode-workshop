@@ -16,9 +16,12 @@ the wizard, reopen in it, change the definition, refresh, break it, and turn it
 off.
 
 It runs on the host, not inside the `ext` workshop, because it needs the real
-`workshop` daemon, LXD, network access to the SDK store, and an X display:
+`workshop` daemon, LXD, network access to the SDK store, and an X display. It
+needs Node 22.18 or newer (24 works): the driver runs its `.ts` sources directly
+through Node's built-in type stripping, so there is no build step.
 
 ```bash
+npm install                  # once, at the repo root: @vscode/test-electron, tsc, and vsce live there
 cd scripts/screenshots
 npm install                  # once; playwright-core is declared here, not in the root package.json
 npm run screenshots          # on the current X session

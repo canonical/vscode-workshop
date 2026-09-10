@@ -258,7 +258,7 @@ export const steps: Step[] = [
   },
   {
     id: 'terminal',
-    produces: ['terminal-go-version', 'port-forwarded'],
+    produces: ['terminal-go-version', 'terminal-window', 'port-forwarded'],
     async run(ctx) {
       const p = page(ctx);
       await openTerminal(p);

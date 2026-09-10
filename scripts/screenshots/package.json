@@ -1,6 +1,9 @@
 {
   "type": "module",
   "private": true,
+  "engines": {
+    "node": ">=22.18"
+  },
   "scripts": {
     "screenshots": "node run.ts",
     "screenshots:xvfb": "XVFB=1 xvfb-run -a -s '-screen 0 1680x1050x24' node run.ts",
