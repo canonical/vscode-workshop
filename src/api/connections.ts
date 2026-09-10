@@ -141,14 +141,27 @@ export function isHostSlot(slot: SlotRef | SlotInfo): boolean {
   return slot.sdk === SYSTEM_SDK;
 }
 
-/** Stable per-workshop channel key for a plug: `<sdk>:<plug>`. */
-export function plugKey(ref: Pick<PlugRef, 'sdk' | 'plug'>): string {
-  return `${ref.sdk}:${ref.plug}`;
+/**
+ * Fully-qualified plug identity, unique across a whole snapshot:
+ * `<project-id>|<workshop>|<sdk>|<plug>`. Use for dedup and lookup keys — a
+ * `GET /v1/connections?workshop=…` snapshot can mix workshops (the daemon
+ * matches the workshop on *either* side of a connection), so a
+ * workshop-agnostic key would collide same-named plugs across workshops. For
+ * a human-facing channel label use {@link displayKey}.
+ */
+export function plugKey(ref: PlugRef): string {
+  return `${ref['project-id']}|${ref.workshop}|${ref.sdk}|${ref.plug}`;
 }
 
-/** Stable per-workshop key for a slot: `<sdk>:<slot>`. */
-export function slotKey(ref: Pick<SlotRef, 'sdk' | 'slot'>): string {
-  return `${ref.sdk}:${ref.slot}`;
+/** Fully-qualified slot identity: `<project-id>|<workshop>|<sdk>|<slot>`. */
+export function slotKey(ref: SlotRef): string {
+  return `${ref['project-id']}|${ref.workshop}|${ref.sdk}|${ref.slot}`;
+}
+
+/** Human-facing channel label `<sdk>:<name>` — a row sub-label, not an identity. */
+export function displayKey(ref: { sdk: string } & ({ plug: string } | { slot: string })): string {
+  const name = 'plug' in ref ? ref.plug : ref.slot;
+  return `${ref.sdk}:${name}`;
 }
 
 /** Read a string-valued attribute, or `undefined` when absent/not a string. */
