@@ -6,3 +6,4 @@ node_modules
 .workshop.lock
 old/
 PLAN-*.md
+media/screenshots/_failure.png
