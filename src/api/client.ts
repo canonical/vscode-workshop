@@ -223,12 +223,6 @@ export interface WorkshopClientOptions {
 export class WorkshopClient {
   private readonly socketPath: string;
   private readonly timeoutMs: number;
-  /**
-   * Memoized project lookups keyed by directory path. A project's id is stable
-   * for a given path, so we cache it to avoid re-POSTing `/v1/projects` on
-   * every poll tick and every action.
-   */
-  private readonly projectCache = new Map<string, Project>();
 
   constructor(options: WorkshopClientOptions = {}) {
     this.socketPath = options.socketPath ?? defaultSocketPath();
@@ -265,19 +259,15 @@ export class WorkshopClient {
    * Resolve a directory to a project, registering it with the daemon if it
    * isn't known yet. This is the entry point for any per-directory query.
    *
-   * The result is memoized by path: the project id is stable for a directory,
-   * so repeat callers (the poller, action handlers) reuse it instead of
-   * re-POSTing `/v1/projects` each time.
+   * Deliberately not memoized: the client is a stateless API caller, and a
+   * project's id is not stable for a given path (a copied directory or a
+   * regenerated lock file yields a new id). Callers hold the resolved id in
+   * `ProjectContext` (see `workspaceContext.ts`), which owns when to
+   * re-resolve.
    */
   async ensureProject(projectPath: string): Promise<Project> {
-    const cached = this.projectCache.get(projectPath);
-    if (cached) {
-      return cached;
-    }
     const result = await this.request('POST', '/v1/projects', { path: projectPath });
-    const project = result as Project;
-    this.projectCache.set(projectPath, project);
-    return project;
+    return result as Project;
   }
 
   /**

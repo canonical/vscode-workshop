@@ -37,7 +37,7 @@ import { WorkshopItem } from './ui/workshopsTree';
 import {
   currentWorkshop,
   isWorkshopWindow,
-  resolveCurrentProjectId,
+  ProjectContext,
 } from './workspaceContext';
 
 export interface WorkshopCommands {
@@ -53,6 +53,7 @@ export interface WorkshopCommands {
 
 interface WorkshopCommandDependencies {
   client: WorkshopClient;
+  projects: ProjectContext;
   globalState: vscode.Memento;
   log: vscode.LogOutputChannel;
   logsView: LogsView;
@@ -65,6 +66,7 @@ interface WorkshopCommandDependencies {
 /** Create command handlers that share the extension's long-lived dependencies. */
 export function createWorkshopCommands({
   client,
+  projects,
   globalState,
   log,
   logsView,
@@ -159,17 +161,19 @@ export function createWorkshopCommands({
     if (!folder) {
       return;
     }
-    const localPath = folder.uri.fsPath;
 
-    void client.ensureProject(localPath)
-      .then(async (project) => {
-        const pendingOp = readPendingOp(globalState, project.id);
+    void projects.getId()
+      .then(async (projectId) => {
+        if (!projectId) {
+          return;
+        }
+        const pendingOp = readPendingOp(globalState, projectId);
         if (pendingOp) {
-          await clearPendingOp(globalState, project.id);
+          await clearPendingOp(globalState, projectId);
           void runPendingOperation(pendingOp);
           return;
         }
-        await showOpenPrompt(project.id);
+        await showOpenPrompt(projectId);
       })
       .catch((err: unknown) => {
         log.debug(`Open prompt skipped: ${err instanceof Error ? err.message : String(err)}`);
@@ -275,7 +279,7 @@ export function createWorkshopCommands({
     if (fromCache) {
       return fromCache;
     }
-    const projectId = await resolveCurrentProjectId(client, globalState);
+    const projectId = await projects.getId();
     if (!projectId) {
       return undefined;
     }

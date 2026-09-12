@@ -1,8 +1,9 @@
 import * as vscode from 'vscode';
+import { isDeepStrictEqual } from 'node:util';
 
 /**
  * Polls `fn()` on a fixed interval and fires {@link onDidUpdate} when the
- * result changes (compared by JSON-serialized deep equality). Fires
+ * result changes (compared structurally with {@link isDeepStrictEqual}). Fires
  * {@link onDidError} when `fn()` rejects.
  *
  * Polling only runs while at least one activation handle is outstanding.
@@ -22,11 +23,23 @@ export class WorkshopPoller<T> implements vscode.Disposable {
 
   private readonly handles = new Set<vscode.Disposable>();
   private timer: ReturnType<typeof setInterval> | undefined;
-  private lastJson: string | undefined;
   private lastParsed: T | undefined;
-  private inFlight = false;
+  /**
+   * Whether {@link lastParsed} reflects the latest tick. Cleared on a failed
+   * tick (while the value itself is kept for consumers to keep showing) so
+   * that the first successful tick after an error always fires
+   * {@link onDidUpdate}, even if the data didn't change meanwhile.
+   */
+  private lastGood = false;
+  private inFlight: Promise<void> | undefined;
+  private queued: Promise<void> | undefined;
 
-  /** The most recently polled value, or `undefined` before the first successful poll. */
+  /**
+   * The most recently fetched value, or `undefined` before the first
+   * successful poll. Kept across failed ticks: consumers showing this value
+   * should keep it on screen through daemon blips rather than regressing to
+   * an empty/loading state.
+   */
   get lastValue(): T | undefined {
     return this.lastParsed;
   }
@@ -60,15 +73,36 @@ export class WorkshopPoller<T> implements vscode.Disposable {
 
   /**
    * Trigger an immediate poll outside of the regular interval. Useful for
-   * manual refresh commands.
+   * manual refresh commands and post-action refreshes.
+   *
+   * A poll issued while a tick is already running is *not* dropped: it waits
+   * for the running tick and then runs one fresh tick, so data mutated after
+   * the running tick sampled it is still picked up. Any number of polls
+   * issued during the same in-flight tick coalesce into that single
+   * follow-up.
    */
-  async poll(): Promise<void> {
-    await this.tick();
+  poll(): Promise<void> {
+    if (this.inFlight === undefined) {
+      return this.runTick();
+    }
+    this.queued ??= this.inFlight.then(() => {
+      // Cleared as the follow-up *starts*: a poll arriving while the
+      // follow-up runs must queue a new tick, not join the running one.
+      this.queued = undefined;
+      return this.runTick();
+    });
+    return this.queued;
   }
 
   private start(): void {
-    void this.tick();
-    this.timer = setInterval(() => void this.tick(), this.intervalMs);
+    void this.runTick();
+    this.timer = setInterval(() => {
+      // Interval ticks are pure freshness: skip when a tick is already
+      // running or a follow-up is queued — the fresh data is coming anyway.
+      if (this.inFlight === undefined && this.queued === undefined) {
+        void this.runTick();
+      }
+    }, this.intervalMs);
   }
 
   private stop(): void {
@@ -78,25 +112,30 @@ export class WorkshopPoller<T> implements vscode.Disposable {
     }
   }
 
+  /** Run one tick, tracking it in {@link inFlight}. Never rejects. */
+  private runTick(): Promise<void> {
+    const tick = this.tick().finally(() => {
+      if (this.inFlight === tick) {
+        this.inFlight = undefined;
+      }
+    });
+    this.inFlight = tick;
+    return tick;
+  }
+
   private async tick(): Promise<void> {
-    if (this.inFlight) {
-      return;
-    }
-    this.inFlight = true;
     try {
       const result = await this.fn();
-      const json = JSON.stringify(result);
-      if (json !== this.lastJson) {
-        this.lastJson = json;
+      if (!this.lastGood || !isDeepStrictEqual(result, this.lastParsed)) {
         this.lastParsed = result;
+        this.lastGood = true;
         this.updateEmitter.fire(result);
       }
     } catch (err) {
-      this.lastJson = undefined; // reset so recovery always fires onDidUpdate
-      this.lastParsed = undefined;
+      // Keep lastParsed — consumers keep showing the last good data — but
+      // clear lastGood so recovery always fires onDidUpdate.
+      this.lastGood = false;
       this.errorEmitter.fire(err instanceof Error ? err : new Error(String(err)));
-    } finally {
-      this.inFlight = false;
     }
   }
 
