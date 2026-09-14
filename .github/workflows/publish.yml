@@ -32,7 +32,6 @@ jobs:
           cache: |
             node:npm-cache
 
-      - run: workshop exec -- npm ci
       - run: workshop run -- build
       - run: workshop run -- test-ci
 
