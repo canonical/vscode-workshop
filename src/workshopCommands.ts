@@ -38,6 +38,7 @@ import {
   currentWorkshop,
   isWorkshopWindow,
   ProjectContext,
+  withProjectRetry,
 } from './workspaceContext';
 
 export interface WorkshopCommands {
@@ -173,7 +174,7 @@ export function createWorkshopCommands({
           void runPendingOperation(pendingOp);
           return;
         }
-        await showOpenPrompt(projectId);
+        await withProjectRetry(projects, (id) => showOpenPrompt(id));
       })
       .catch((err: unknown) => {
         log.debug(`Open prompt skipped: ${err instanceof Error ? err.message : String(err)}`);
@@ -283,7 +284,10 @@ export function createWorkshopCommands({
     if (!projectId) {
       return undefined;
     }
-    const workshops = await listProjectWorkshops(client, projectId);
+    const workshops = await withProjectRetry(
+      projects,
+      (id) => listProjectWorkshops(client, id),
+    );
     return findWorkshopForDefinition(workshops, filePath);
   }
 
