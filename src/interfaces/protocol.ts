@@ -12,7 +12,14 @@ import { MountMenuItem } from './model';
 
 export type ExtToWebview =
   | { type: 'state'; state: PanelData }
-  /** Settles a whole toggle burst for one row (ok:false → snap back). */
+  /**
+   * Settles a whole toggle burst for one row. The switch already reflects
+   * daemon truth by the time this arrives — a poll runs right before every
+   * exit from the burst's convergence loop — so `ok` isn't needed to snap
+   * the switch back; it records whether the burst actually converged, for a
+   * future UI (e.g. a failure indicator) that wants to tell "gave up" apart
+   * from "succeeded".
+   */
   | { type: 'actionResult'; rowId: string; ok: boolean };
 
 /** A menu choice: remount, or connect the row's plug to a specific slot. */
