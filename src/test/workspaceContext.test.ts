@@ -1,12 +1,11 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
 
-import { WorkshopApiError } from '../api/client';
+import { WorkshopApiError, WorkshopNotProjectError } from '../api/client';
 import { writeSession } from '../state';
 import {
   currentWorkshop,
   ProjectContext,
-  resolveCurrentProjectId,
   withProjectRetry,
 } from '../workspaceContext';
 
@@ -64,50 +63,6 @@ suite('workspace context', () => {
     });
   });
 
-  test('resolves a workshop window from its stored session', async () => {
-    await writeSession(state, 'web.project-1.wp', {
-      projectId: 'project-1',
-      workshopName: 'web',
-    });
-    let ensured = false;
-    const client = {
-      ensureProject: async () => {
-        ensured = true;
-        return { id: 'wrong', path: '/wrong' };
-      },
-    };
-
-    const projectId = await resolveCurrentProjectId(
-      client,
-      state,
-      sshFolder('web.project-1.wp'),
-    );
-
-    assert.strictEqual(projectId, 'project-1');
-    assert.strictEqual(ensured, false);
-  });
-
-  test('resolves a local window through the daemon', async () => {
-    const client = {
-      ensureProject: async (path: string) => ({ id: 'project-1', path }),
-    };
-
-    assert.strictEqual(
-      await resolveCurrentProjectId(client, state, localFolder('/project')),
-      'project-1',
-    );
-  });
-
-  test('returns undefined without a remote session', async () => {
-    const client = {
-      ensureProject: async (path: string) => ({ id: 'project-1', path }),
-    };
-
-    assert.strictEqual(
-      await resolveCurrentProjectId(client, state, sshFolder('web.project-1.wp')),
-      undefined,
-    );
-  });
 });
 
 /** A client stub minting a new id per POST, like a daemon re-issuing ids. */
@@ -179,11 +134,11 @@ suite('ProjectContext', () => {
     const context = new ProjectContext(client, state, () => currentFolder);
 
     // A resolution for /a starts but has not completed.
-    const first = context.resolveNow();
+    const first = context.getId();
     // The workspace folder changes: invalidate, then resolve afresh for /b.
     currentFolder = localFolder('/b');
     context.invalidate();
-    const second = context.resolveNow();
+    const second = context.getId();
 
     // The fresh resolution settles first, then the superseded one.
     releases[1]({ id: 'b', path: '/b' });
@@ -195,6 +150,75 @@ suite('ProjectContext', () => {
       'b',
       'the superseded resolution must not overwrite the fresh id',
     );
+  });
+
+  test('a resolution invalidated mid-flight does not return the superseded id', async () => {
+    const releases: Array<(value: { id: string; path: string }) => void> = [];
+    let currentFolder = localFolder('/a');
+    const client = {
+      ensureProject: (path: string) =>
+        new Promise<{ id: string; path: string }>((resolve) => {
+          releases.push((value) => resolve({ ...value, path }));
+        }),
+    };
+    const context = new ProjectContext(client, state, () => currentFolder);
+
+    const first = context.getId();
+    currentFolder = localFolder('/b');
+    context.invalidate();
+    const second = context.getId();
+
+    // The fresh resolution settles first, then the superseded one.
+    releases[1]({ id: 'b', path: '/b' });
+    releases[0]({ id: 'a', path: '/a' });
+
+    assert.strictEqual(await first, 'b', 'the in-flight caller must not receive the old folder id');
+    assert.strictEqual(await second, 'b');
+  });
+
+  test('a joined caller also honours a mid-flight invalidation', async () => {
+    await writeSession(state, 'web.project-1.wp', {
+      projectId: 'session-b',
+      workshopName: 'web',
+    });
+    const releases: Array<(value: { id: string; path: string }) => void> = [];
+    let currentFolder = localFolder('/a');
+    const client = {
+      ensureProject: (path: string) =>
+        new Promise<{ id: string; path: string }>((resolve) => {
+          releases.push((value) => resolve({ ...value, path }));
+        }),
+    };
+    const context = new ProjectContext(client, state, () => currentFolder);
+
+    // Two callers share one in-flight resolution for /a.
+    const first = context.getId();
+    const joined = context.getId();
+    // The window switches to a workshop folder before /a resolves.
+    currentFolder = sshFolder('web.project-1.wp');
+    context.invalidate();
+
+    // The superseded /a resolution settles; both waiters must re-resolve to the
+    // current (session) id rather than receive the stale /a id.
+    releases[0]({ id: 'a', path: '/a' });
+
+    assert.strictEqual(await first, 'session-b');
+    assert.strictEqual(await joined, 'session-b', 'the joined caller must not receive the stale id');
+  });
+
+  test('a stale retry reuses an id another caller already refreshed to', async () => {
+    const client = countingClient(['stale', 'fresh']);
+    const context = new ProjectContext(client, state, () => localFolder('/project'));
+
+    assert.strictEqual(await context.getId(), 'stale');
+
+    // The first stale caller refreshes past the id.
+    assert.strictEqual(await context.resolveStaleLocalId('stale'), 'fresh');
+
+    // A second caller's 404 for the SAME stale id lands after that refresh: it
+    // must reuse 'fresh', not invalidate it and mint yet another id.
+    assert.strictEqual(await context.resolveStaleLocalId('stale'), 'fresh');
+    assert.strictEqual(client.calls, 2, 'no third /v1/projects for the late stale retry');
   });
 
   test('a failed resolution is not held: the next getId retries', async () => {
@@ -214,15 +238,23 @@ suite('ProjectContext', () => {
     assert.strictEqual(await context.getId(), 'p1');
   });
 
-  test('a workshop window resolves from its session without the daemon', async () => {
+  test('a workshop window uses its persisted session project id', async () => {
     await writeSession(state, 'web.project-1.wp', {
       projectId: 'project-1',
       workshopName: 'web',
     });
-    const client = countingClient(['wrong']);
+    const client = countingClient(['fresh']);
     const context = new ProjectContext(client, state, () => sshFolder('web.project-1.wp'));
 
     assert.strictEqual(await context.getId(), 'project-1');
+    assert.strictEqual(client.calls, 0);
+  });
+
+  test('a workshop window without a session does not register its remote path', async () => {
+    const client = countingClient(['wrong']);
+    const context = new ProjectContext(client, state, () => sshFolder('web.project-1.wp'));
+
+    assert.strictEqual(await context.getId(), undefined);
     assert.strictEqual(client.calls, 0);
   });
 });
@@ -265,6 +297,27 @@ suite('withProjectRetry', () => {
     assert.strictEqual(result, 'via-fresh');
     assert.deepStrictEqual(seen, ['stale', 'fresh']);
     assert.strictEqual(await context.getId(), 'fresh', 'the fresh id is now held');
+  });
+
+  test('a workshop window does not retry a stale session project id', async () => {
+    await writeSession(state, 'web.project-1.wp', {
+      projectId: 'stale-session',
+      workshopName: 'web',
+    });
+    const client = countingClient(['wrong']);
+    const context = new ProjectContext(client, state, () => sshFolder('web.project-1.wp'));
+
+    const seen: string[] = [];
+    await assert.rejects(
+      () => withProjectRetry(context, async (id) => {
+        seen.push(id);
+        throw new WorkshopApiError('not found', 404);
+      }),
+      /not found/,
+    );
+
+    assert.deepStrictEqual(seen, ['stale-session']);
+    assert.strictEqual(client.calls, 0);
   });
 
   test('an error kind of not-found retries like a 404', async () => {
@@ -312,6 +365,22 @@ suite('withProjectRetry', () => {
     );
     assert.strictEqual(attempts, 1);
     assert.strictEqual(client.calls, 1, 'no re-resolution for a non-404');
+  });
+
+  test('a non-project 404 propagates without a retry', async () => {
+    const client = countingClient(['p1']);
+    const context = new ProjectContext(client, state, () => localFolder('/project'));
+
+    let attempts = 0;
+    await assert.rejects(
+      () => withProjectRetry(context, async () => {
+        attempts += 1;
+        throw new WorkshopNotProjectError('not a project', 404);
+      }),
+      WorkshopNotProjectError,
+    );
+    assert.strictEqual(attempts, 1);
+    assert.strictEqual(client.calls, 1, 'no re-resolution for a non-project response');
   });
 
   test('throws when no project is associated with the window', async () => {

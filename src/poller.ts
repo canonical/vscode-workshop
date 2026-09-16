@@ -82,10 +82,13 @@ export class WorkshopPoller<T> implements vscode.Disposable {
    * follow-up.
    */
   poll(): Promise<void> {
+    if (this.queued !== undefined) {
+      return this.queued;
+    }
     if (this.inFlight === undefined) {
       return this.runTick();
     }
-    this.queued ??= this.inFlight.then(() => {
+    this.queued = this.inFlight.then(() => {
       // Cleared as the follow-up *starts*: a poll arriving while the
       // follow-up runs must queue a new tick, not join the running one.
       this.queued = undefined;
@@ -95,7 +98,10 @@ export class WorkshopPoller<T> implements vscode.Disposable {
   }
 
   private start(): void {
-    void this.runTick();
+    // Route the initial tick through poll() so it joins or queues behind any
+    // tick still in flight (e.g. a manual/workspace-change poll while hidden)
+    // instead of starting a concurrent one.
+    void this.poll();
     this.timer = setInterval(() => {
       // Interval ticks are pure freshness: skip when a tick is already
       // running or a follow-up is queued — the fresh data is coming anyway.
@@ -114,11 +120,15 @@ export class WorkshopPoller<T> implements vscode.Disposable {
 
   /** Run one tick, tracking it in {@link inFlight}. Never rejects. */
   private runTick(): Promise<void> {
-    const tick = this.tick().finally(() => {
-      if (this.inFlight === tick) {
-        this.inFlight = undefined;
-      }
-    });
+    // Defer tick() so inFlight is set before fn() runs: a synchronous poll()
+    // reentered from fn() must see the in-flight tick and coalesce.
+    const tick = Promise.resolve()
+      .then(() => this.tick())
+      .finally(() => {
+        if (this.inFlight === tick) {
+          this.inFlight = undefined;
+        }
+      });
     this.inFlight = tick;
     return tick;
   }
@@ -127,7 +137,9 @@ export class WorkshopPoller<T> implements vscode.Disposable {
     try {
       const result = await this.fn();
       if (!this.lastGood || !isDeepStrictEqual(result, this.lastParsed)) {
-        this.lastParsed = result;
+        // Snapshot for comparison: fn may reuse and mutate one reference
+        // between ticks, which an identity-based compare would never detect.
+        this.lastParsed = structuredClone(result);
         this.lastGood = true;
         this.updateEmitter.fire(result);
       }

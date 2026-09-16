@@ -29,12 +29,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const logsView = new LogsView();
   logsView.register(context);
 
-  // Resolved once here (and re-resolved on workspace change / stale id via
-  // ProjectContext) — never per poll tick.
   const projects = new ProjectContext(client, context.globalState);
-  void projects.resolveNow().catch(() => {
-    // The daemon may not be up yet; the next getId() retries.
-  });
 
   const poller = new WorkshopPoller<Workshop[]>(async () => {
     await assertWorkshopVersionCompatible(client, log);

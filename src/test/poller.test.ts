@@ -202,6 +202,48 @@ suite('WorkshopPoller', () => {
     poller.dispose();
   });
 
+  test('poll in the completion gap joins the queued follow-up', async () => {
+    let calls = 0;
+    let active = 0;
+    let maxActive = 0;
+    let releaseFirst: (() => void) | undefined;
+    const releaseFollowups: Array<() => void> = [];
+    const poller = new WorkshopPoller(async () => {
+      calls += 1;
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      try {
+        if (calls === 1) {
+          await new Promise<void>((resolve) => { releaseFirst = resolve; });
+        } else {
+          await new Promise<void>((resolve) => { releaseFollowups.push(resolve); });
+        }
+        return calls;
+      } finally {
+        active -= 1;
+      }
+    }, 50_000);
+    poller.onDidUpdate(() => { /* ignore */ });
+
+    const first = poller.poll();
+    const gapPoll = first.then(() => poller.poll());
+    await new Promise<void>((resolve) => setTimeout(resolve, 10));
+    const queued = poller.poll();
+
+    releaseFirst?.();
+    await first;
+    // Let the coalesced follow-up start: its fn() now runs a microtask after
+    // the first tick settles, since inFlight is assigned before fn is invoked.
+    await new Promise<void>((resolve) => setTimeout(resolve, 10));
+
+    assert.strictEqual(calls, 2, 'the completion-gap poll joins the follow-up');
+    assert.strictEqual(maxActive, 1, 'ticks remain serialized');
+
+    releaseFollowups.forEach((release) => release());
+    await Promise.all([gapPoll, queued]);
+    poller.dispose();
+  });
+
   test('the coalesced follow-up observes data changed after the first tick sampled it', async () => {
     let value = 'before';
     let release: (() => void) | undefined;
