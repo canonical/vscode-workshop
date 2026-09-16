@@ -200,6 +200,32 @@ suite('MountsPanelProvider', () => {
     provider.dispose();
   });
 
+  test('a disagreeing daemon that never converges ends the burst with ok:false', async () => {
+    let toggleCalls = 0;
+    const actions: MountsActions = {
+      // Succeeds every time but the row never actually flips — a daemon
+      // that accepts the toggle yet keeps reporting the old position.
+      toggle: async () => {
+        toggleCalls += 1;
+      },
+      menu: async () => {},
+    };
+    const { provider, posted } = makeProvider({ data: () => tableData([row({ connected: true })]), actions });
+    await provider.handleMessage({ type: 'ready' });
+    posted.length = 0;
+
+    await provider.handleMessage({ type: 'toggle', rowId: 'host|node:npm-cache|system:mount', desired: false });
+
+    assert.strictEqual(toggleCalls, 5, 'gives up after the iteration cap, not before');
+    const results = posted.filter((message) => message.type === 'actionResult');
+    assert.deepStrictEqual(results, [{
+      type: 'actionResult',
+      rowId: 'host|node:npm-cache|system:mount',
+      ok: false,
+    }]);
+    provider.dispose();
+  });
+
   test('menu actions are re-validated against the row menu extension-side', async () => {
     const invoked: MenuAction[] = [];
     const actions: MountsActions = {

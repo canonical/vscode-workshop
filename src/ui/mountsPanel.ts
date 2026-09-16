@@ -179,9 +179,11 @@ export class MountsPanelProvider implements vscode.WebviewViewProvider, vscode.D
       return;
     }
 
+    const maxIterations = 5;
     let ok = true;
     try {
-      for (let iteration = 0; iteration < 5; iteration += 1) {
+      let iteration = 0;
+      for (; iteration < maxIterations; iteration += 1) {
         const row = this.findRow(rowId);
         const wanted = this.desiredByRow.get(rowId);
         if (row === undefined || wanted === undefined || row.connected === wanted) {
@@ -190,6 +192,10 @@ export class MountsPanelProvider implements vscode.WebviewViewProvider, vscode.D
         await actions.toggle(row, wanted);
         await this.poller.poll();
       }
+      // The cap was reached without the daemon ever agreeing — a disagreeing
+      // daemon, not a thrown error, but still a burst that didn't converge.
+      ok = false;
+      this.deps.log.warn(`Toggle for ${rowId} did not converge after ${iteration} attempts`);
     } catch (err) {
       // The failure ends the burst; the toast/log/fallback-modal live in
       // the actions layer. The switch settles to daemon truth below.
