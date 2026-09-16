@@ -15,7 +15,7 @@ import { createWorkshopCommands } from './workshopCommands';
 import {
   currentWorkshop,
   isWorkshopWindow,
-  resolveCurrentProjectId,
+  ProjectContext,
 } from './workspaceContext';
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -28,9 +28,11 @@ export function activate(context: vscode.ExtensionContext): void {
   const logsView = new LogsView();
   logsView.register(context);
 
+  const projects = new ProjectContext(client, context.globalState);
+
   const poller = new WorkshopPoller<Workshop[]>(async () => {
     await assertWorkshopVersionCompatible(client, log);
-    const projectId = await resolveCurrentProjectId(client, context.globalState);
+    const projectId = await projects.getId();
     return projectId ? listProjectWorkshops(client, projectId) : [];
   });
 
@@ -40,6 +42,7 @@ export function activate(context: vscode.ExtensionContext): void {
   });
   const workshopCommands = createWorkshopCommands({
     client,
+    projects,
     globalState: context.globalState,
     log,
     logsView,
@@ -71,7 +74,11 @@ export function activate(context: vscode.ExtensionContext): void {
     poller,
     provider,
     treeView,
-    vscode.workspace.onDidChangeWorkspaceFolders(updateTreeViewTitle),
+    vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      updateTreeViewTitle();
+      projects.invalidate();
+      void poller.poll();
+    }),
     vscode.window.registerFileDecorationProvider(provider.decorationProvider),
     treeView.onDidChangeVisibility((event) => {
       if (event.visible) {
