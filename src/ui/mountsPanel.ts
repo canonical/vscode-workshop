@@ -102,6 +102,11 @@ export class MountsPanelProvider implements vscode.WebviewViewProvider, vscode.D
     return this.poller.lastValue;
   }
 
+  /** Whether the view is currently shown (its container open, this tab active). */
+  get visible(): boolean {
+    return this.view?.visible ?? false;
+  }
+
   resolveWebviewView(view: vscode.WebviewView): void {
     this.view = view;
     view.webview.options = {

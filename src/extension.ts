@@ -132,6 +132,11 @@ export function activate(context: vscode.ExtensionContext): void {
       const name = selectedTreeWorkshop();
       if (name !== undefined) {
         mountsPanel.setSelectedWorkshop(name);
+        // Surface the panel if it's collapsed/closed; leave it alone (and
+        // leave focus on the tree) if it's already showing.
+        if (!mountsPanel.visible) {
+          void vscode.commands.executeCommand(`${MOUNTS_VIEW_ID}.focus`, { preserveFocus: true });
+        }
       }
     }),
     treeView.onDidChangeVisibility((event) => {
