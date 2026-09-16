@@ -41,8 +41,10 @@ export interface MountsPanelDeps {
 /**
  * Webview view provider for the Mounts tab of the Workshop panel. Owns the
  * PanelData poller (activated only while the view is visible), the current
- * workshop selection (reset when the view is disposed — selection is never
- * restored on reopen), and the message handling for the webview protocol.
+ * workshop selection (held across view disposal — the extension pushes it on
+ * activation and on tree-selection change, so a reopened view keeps following
+ * the tree instead of blanking until the next click), and the message handling
+ * for the webview protocol.
  *
  * The webview is untrusted: every inbound message is shape-checked and menu
  * actions are re-validated against the current row's menu extension-side.

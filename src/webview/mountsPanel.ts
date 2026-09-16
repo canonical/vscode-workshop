@@ -173,20 +173,16 @@ function renderSourceCell(row: MountRow): HTMLElement {
     value.textContent = EM_DASH;
   } else if (row.section === 'host') {
     value.className = 'val mono';
-    const link = document.createElement('a');
+    // A button, not an anchor: revealing in the OS file manager is an action,
+    // not a navigation. The native button is announced as a control and
+    // activates on both Enter and Space without a synthetic keydown.
+    const link = document.createElement('button');
+    link.type = 'button';
     link.className = 'link';
-    link.tabIndex = 0;
     link.textContent = row.sourceDisplay ?? row.source;
     link.title = row.source;
     const source = row.source;
-    const reveal = () => vscode.postMessage({ type: 'reveal', path: source });
-    link.addEventListener('click', reveal);
-    link.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
-        reveal();
-      }
-    });
+    link.addEventListener('click', () => vscode.postMessage({ type: 'reveal', path: source }));
     value.appendChild(link);
   } else {
     value.className = 'val mono';
