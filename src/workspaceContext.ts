@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-import { WorkshopApiError, WorkshopClient, WorkshopNotProjectError } from './api/client';
+import { WorkshopClient } from './api/client';
 import { hostnameFromFolder, readSession, WorkshopSession } from './state';
 
 type ProjectResolver = Pick<WorkshopClient, 'ensureProject'>;
@@ -32,11 +32,9 @@ export function currentWorkshop(
  * session id because the local daemon cannot resolve a Remote-SSH path; local
  * windows register their filesystem path with the daemon.
  *
- * Invalidation contract for the held id: it is dropped and re-resolved when
- * the workspace folders change (the `extension.ts` listener calls
- * {@link invalidate}) and, for local folders, when a caller proves it stale
- * via {@link withProjectRetry} (a daemon 404 for the held id). A failed local
- * resolution holds nothing, so the next {@link getId} retries.
+ * The held id is dropped and re-resolved when the workspace folders change
+ * (the `extension.ts` listener calls {@link invalidate}). A failed resolution
+ * holds nothing, so the next {@link getId} retries.
  */
 export class ProjectContext {
   private projectId: string | undefined;
@@ -112,24 +110,6 @@ export class ProjectContext {
     return (await this.client.ensureProject(folder.uri.fsPath)).id;
   }
 
-  /** Re-resolve a stale id only when the daemon can access the local folder. */
-  async resolveStaleLocalId(staleId: string): Promise<string | undefined> {
-    if (this.folder()?.uri.scheme !== 'file') {
-      return undefined;
-    }
-    // A concurrent caller already refreshed past this id: reuse the new one
-    // rather than invalidating it and minting yet another (superseding) id.
-    if (this.projectId !== undefined && this.projectId !== staleId) {
-      return this.projectId;
-    }
-    // Join a refresh already in flight rather than starting another.
-    if (this.resolving !== undefined) {
-      return this.resolving;
-    }
-    this.invalidate();
-    return this.resolveNow();
-  }
-
   /** Drop the held id; the next {@link getId} resolves afresh. */
   invalidate(): void {
     this.projectId = undefined;
@@ -137,39 +117,4 @@ export class ProjectContext {
     this.resolving = undefined;
     this.generation += 1;
   }
-}
-
-/**
- * Run `fn` with the held project id. For a local folder, re-resolve and retry
- * once when the daemon answers 404/`not-found`: its project record can vanish
- * or be reissued under a new id. Workshop windows preserve their persisted
- * session id and propagate the error because their remote path is not
- * accessible to the local daemon.
- */
-export async function withProjectRetry<T>(
-  projects: ProjectContext,
-  fn: (projectId: string) => Promise<T>,
-): Promise<T> {
-  const id = await projects.getId();
-  if (id === undefined) {
-    throw new WorkshopApiError('no workshop project is associated with this window', 0);
-  }
-  try {
-    return await fn(id);
-  } catch (err) {
-    if (!maybeStale(err)) {
-      throw err;
-    }
-    const fresh = await projects.resolveStaleLocalId(id);
-    if (fresh === undefined) {
-      throw err;
-    }
-    return fn(fresh);
-  }
-}
-
-function maybeStale(err: unknown): boolean {
-  return !(err instanceof WorkshopNotProjectError)
-    && err instanceof WorkshopApiError
-    && (err.statusCode === 404 || err.kind === 'not-found');
 }

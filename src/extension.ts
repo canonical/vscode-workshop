@@ -16,7 +16,6 @@ import {
   currentWorkshop,
   isWorkshopWindow,
   ProjectContext,
-  withProjectRetry,
 } from './workspaceContext';
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -34,9 +33,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const poller = new WorkshopPoller<Workshop[]>(async () => {
     await assertWorkshopVersionCompatible(client, log);
     const projectId = await projects.getId();
-    return projectId
-      ? withProjectRetry(projects, (id) => listProjectWorkshops(client, id))
-      : [];
+    return projectId ? listProjectWorkshops(client, projectId) : [];
   });
 
   const provider = new WorkshopsTreeProvider(poller, client, log, context.extensionUri);

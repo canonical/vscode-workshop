@@ -1,12 +1,10 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
 
-import { WorkshopApiError, WorkshopNotProjectError } from '../api/client';
 import { writeSession } from '../state';
 import {
   currentWorkshop,
   ProjectContext,
-  withProjectRetry,
 } from '../workspaceContext';
 
 class MemoryMemento implements vscode.Memento {
@@ -206,21 +204,6 @@ suite('ProjectContext', () => {
     assert.strictEqual(await joined, 'session-b', 'the joined caller must not receive the stale id');
   });
 
-  test('a stale retry reuses an id another caller already refreshed to', async () => {
-    const client = countingClient(['stale', 'fresh']);
-    const context = new ProjectContext(client, state, () => localFolder('/project'));
-
-    assert.strictEqual(await context.getId(), 'stale');
-
-    // The first stale caller refreshes past the id.
-    assert.strictEqual(await context.resolveStaleLocalId('stale'), 'fresh');
-
-    // A second caller's 404 for the SAME stale id lands after that refresh: it
-    // must reuse 'fresh', not invalidate it and mint yet another id.
-    assert.strictEqual(await context.resolveStaleLocalId('stale'), 'fresh');
-    assert.strictEqual(client.calls, 2, 'no third /v1/projects for the late stale retry');
-  });
-
   test('a failed resolution is not held: the next getId retries', async () => {
     let fail = true;
     const client = {
@@ -256,140 +239,5 @@ suite('ProjectContext', () => {
 
     assert.strictEqual(await context.getId(), undefined);
     assert.strictEqual(client.calls, 0);
-  });
-});
-
-suite('withProjectRetry', () => {
-  let state: MemoryMemento;
-
-  setup(() => {
-    state = new MemoryMemento();
-  });
-
-  test('runs fn with the held id and does not re-resolve on success', async () => {
-    const client = countingClient(['p1']);
-    const context = new ProjectContext(client, state, () => localFolder('/project'));
-
-    const seen: string[] = [];
-    const result = await withProjectRetry(context, async (id) => {
-      seen.push(id);
-      return 'ok';
-    });
-
-    assert.strictEqual(result, 'ok');
-    assert.deepStrictEqual(seen, ['p1']);
-    assert.strictEqual(client.calls, 1);
-  });
-
-  test('a 404 for the held id re-resolves the path and retries once', async () => {
-    const client = countingClient(['stale', 'fresh']);
-    const context = new ProjectContext(client, state, () => localFolder('/project'));
-
-    const seen: string[] = [];
-    const result = await withProjectRetry(context, async (id) => {
-      seen.push(id);
-      if (id === 'stale') {
-        throw new WorkshopApiError('not found', 404);
-      }
-      return `via-${id}`;
-    });
-
-    assert.strictEqual(result, 'via-fresh');
-    assert.deepStrictEqual(seen, ['stale', 'fresh']);
-    assert.strictEqual(await context.getId(), 'fresh', 'the fresh id is now held');
-  });
-
-  test('a workshop window does not retry a stale session project id', async () => {
-    await writeSession(state, 'web.project-1.wp', {
-      projectId: 'stale-session',
-      workshopName: 'web',
-    });
-    const client = countingClient(['wrong']);
-    const context = new ProjectContext(client, state, () => sshFolder('web.project-1.wp'));
-
-    const seen: string[] = [];
-    await assert.rejects(
-      () => withProjectRetry(context, async (id) => {
-        seen.push(id);
-        throw new WorkshopApiError('not found', 404);
-      }),
-      /not found/,
-    );
-
-    assert.deepStrictEqual(seen, ['stale-session']);
-    assert.strictEqual(client.calls, 0);
-  });
-
-  test('an error kind of not-found retries like a 404', async () => {
-    const client = countingClient(['stale', 'fresh']);
-    const context = new ProjectContext(client, state, () => localFolder('/project'));
-
-    const seen: string[] = [];
-    await withProjectRetry(context, async (id) => {
-      seen.push(id);
-      if (id === 'stale') {
-        throw new WorkshopApiError('gone', 400, 'not-found');
-      }
-      return 'ok';
-    });
-
-    assert.deepStrictEqual(seen, ['stale', 'fresh']);
-  });
-
-  test('retries only once: a second 404 propagates', async () => {
-    const client = countingClient(['p1', 'p2']);
-    const context = new ProjectContext(client, state, () => localFolder('/project'));
-
-    let attempts = 0;
-    await assert.rejects(
-      () => withProjectRetry(context, async () => {
-        attempts += 1;
-        throw new WorkshopApiError('still gone', 404);
-      }),
-      /still gone/,
-    );
-    assert.strictEqual(attempts, 2);
-  });
-
-  test('non-stale errors propagate without a retry', async () => {
-    const client = countingClient(['p1']);
-    const context = new ProjectContext(client, state, () => localFolder('/project'));
-
-    let attempts = 0;
-    await assert.rejects(
-      () => withProjectRetry(context, async () => {
-        attempts += 1;
-        throw new WorkshopApiError('boom', 500);
-      }),
-      /boom/,
-    );
-    assert.strictEqual(attempts, 1);
-    assert.strictEqual(client.calls, 1, 'no re-resolution for a non-404');
-  });
-
-  test('a non-project 404 propagates without a retry', async () => {
-    const client = countingClient(['p1']);
-    const context = new ProjectContext(client, state, () => localFolder('/project'));
-
-    let attempts = 0;
-    await assert.rejects(
-      () => withProjectRetry(context, async () => {
-        attempts += 1;
-        throw new WorkshopNotProjectError('not a project', 404);
-      }),
-      WorkshopNotProjectError,
-    );
-    assert.strictEqual(attempts, 1);
-    assert.strictEqual(client.calls, 1, 'no re-resolution for a non-project response');
-  });
-
-  test('throws when no project is associated with the window', async () => {
-    const client = countingClient(['unused']);
-    const context = new ProjectContext(client, state, () => undefined);
-
-    await assert.rejects(
-      () => withProjectRetry(context, async () => 'unreachable'),
-      /no workshop project/,
-    );
   });
 });
