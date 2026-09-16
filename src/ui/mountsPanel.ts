@@ -1,6 +1,7 @@
 import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 
+import { slotKey } from '../api/connections';
 import { PanelData } from '../interfaces/data';
 import { MountRow } from '../interfaces/model';
 import { ExtToWebview, isWebviewToExt, MenuAction } from '../interfaces/protocol';
@@ -41,8 +42,10 @@ export interface MountsPanelDeps {
 /**
  * Webview view provider for the Mounts tab of the Workshop panel. Owns the
  * PanelData poller (activated only while the view is visible), the current
- * workshop selection (reset when the view is disposed — selection is never
- * restored on reopen), and the message handling for the webview protocol.
+ * workshop selection (held across view disposal — the extension pushes it on
+ * activation and on tree-selection change, so a reopened view keeps following
+ * the tree instead of blanking until the next click), and the message handling
+ * for the webview protocol.
  *
  * The webview is untrusted: every inbound message is shape-checked and menu
  * actions are re-validated against the current row's menu extension-side.
@@ -97,6 +100,11 @@ export class MountsPanelProvider implements vscode.WebviewViewProvider, vscode.D
 
   get lastData(): PanelData | undefined {
     return this.poller.lastValue;
+  }
+
+  /** Whether the view is currently shown (its container open, this tab active). */
+  get visible(): boolean {
+    return this.view?.visible ?? false;
   }
 
   resolveWebviewView(view: vscode.WebviewView): void {
@@ -176,9 +184,11 @@ export class MountsPanelProvider implements vscode.WebviewViewProvider, vscode.D
       return;
     }
 
+    const maxIterations = 5;
     let ok = true;
     try {
-      for (let iteration = 0; iteration < 5; iteration += 1) {
+      let iteration = 0;
+      for (; iteration < maxIterations; iteration += 1) {
         const row = this.findRow(rowId);
         const wanted = this.desiredByRow.get(rowId);
         if (row === undefined || wanted === undefined || row.connected === wanted) {
@@ -187,6 +197,10 @@ export class MountsPanelProvider implements vscode.WebviewViewProvider, vscode.D
         await actions.toggle(row, wanted);
         await this.poller.poll();
       }
+      // The cap was reached without the daemon ever agreeing — a disagreeing
+      // daemon, not a thrown error, but still a burst that didn't converge.
+      ok = false;
+      this.deps.log.warn(`Toggle for ${rowId} did not converge after ${iteration} attempts`);
     } catch (err) {
       // The failure ends the burst; the toast/log/fallback-modal live in
       // the actions layer. The switch settles to daemon truth below.
@@ -206,8 +220,8 @@ export class MountsPanelProvider implements vscode.WebviewViewProvider, vscode.D
     const row = this.findRow(rowId);
     // Re-validate against the row's own menu: the webview is untrusted, and
     // e.g. Remount must never run on an internal mount.
-    if (row === undefined || !row.menu.includes(action)) {
-      this.deps.log.warn(`Mounts panel dropped menu action ${action} for ${rowId}`);
+    if (row === undefined || !menuHasAction(row, action)) {
+      this.deps.log.warn(`Mounts panel dropped menu action ${action.kind} for ${rowId}`);
       return;
     }
     if (this.menuInFlight.has(rowId)) {
@@ -258,6 +272,15 @@ export class MountsPanelProvider implements vscode.WebviewViewProvider, vscode.D
     this.activationHandle = undefined;
     this.poller.dispose();
   }
+}
+
+/** Whether `action` corresponds to a real menu item on the row. */
+function menuHasAction(row: MountRow, action: MenuAction): boolean {
+  if (action.kind === 'remount') {
+    return row.menu.some((item) => item.kind === 'remount');
+  }
+  const target = slotKey(action.slot);
+  return row.menu.some((item) => item.kind === 'connect' && slotKey(item.slot) === target);
 }
 
 /** Webview surface needed to build the page — test-friendly subset. */

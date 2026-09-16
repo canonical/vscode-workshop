@@ -124,7 +124,7 @@ function isPlugRef(value: unknown): value is PlugRef {
     && typeof value.plug === 'string';
 }
 
-function isSlotRef(value: unknown): value is SlotRef {
+export function isSlotRef(value: unknown): value is SlotRef {
   return isRecord(value)
     && typeof value['project-id'] === 'string'
     && typeof value.workshop === 'string'

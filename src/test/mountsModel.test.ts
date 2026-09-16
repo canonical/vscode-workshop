@@ -64,7 +64,7 @@ suite('buildSections', () => {
     assert.strictEqual(row.sourceSub, 'system:mount');
     assert.strictEqual(row.target, '/home/workshop/.npm/_cacache');
     assert.strictEqual(row.targetSub, 'node:npm-cache');
-    assert.deepStrictEqual(row.menu, ['remount'], 'no SDK slots → remount only');
+    assert.deepStrictEqual(row.menu, [{ kind: 'remount' }], 'no SDK slots → remount only');
   });
 
   test('an internal SDK↔SDK mount renders in Workshop, listed first, with no menu', () => {
@@ -130,13 +130,19 @@ suite('buildSections', () => {
     assert.strictEqual(row.connected, false);
     assert.deepStrictEqual(row.slot, slotRef('uv', 'venv'));
     assert.strictEqual(row.source, '/home/workshop/uv-venv', 'source from undesired slot-attrs');
-    assert.deepStrictEqual(row.menu, ['connect-to-sdk'], 'SDK slots exist');
+    assert.deepStrictEqual(
+      row.menu,
+      [{ kind: 'connect', slot: HOST_SLOT }],
+      "offers the host as an alternative, not its own (already disconnected) slot",
+    );
   });
 
-  test('dual wiring: host + SDK wirings of one plug are two independent rows (AC 13)', () => {
+  test('a plug wired to an SDK slot never also shows a stale host row (1-1)', () => {
     const sections = build({
       snapshot: snapshot({
         established: [{ plug: plugRef('jupyter', 'venv'), slot: slotRef('uv', 'venv') }],
+        // A leftover "don't reconnect to the host" memory from before the
+        // plug moved to the SDK slot above — must not surface as a row.
         undesired: [{
           plug: plugRef('jupyter', 'venv'),
           slot: HOST_SLOT,
@@ -147,17 +153,11 @@ suite('buildSections', () => {
       }),
     });
 
-    assert.strictEqual(sections.length, 2, 'one row per wiring, each in its own section');
-    const internal = sections[0].rows[0];
-    const host = sections[1].rows[0];
-    assert.strictEqual(internal.connected, true);
-    assert.strictEqual(host.connected, false);
-    assert.strictEqual(
-      host.source,
-      '/data/id/86e64b3e/dev/mount/jupyter/venv',
-      'disconnected host row keeps its path from the undesired slot-attrs',
-    );
-    assert.notStrictEqual(internal.id, host.id);
+    assert.strictEqual(sections.length, 1, 'the plug appears in Workshop only, not Host to Workshop');
+    assert.strictEqual(sections[0].id, 'workshop');
+    const [row] = sections[0].rows;
+    assert.strictEqual(row.connected, true);
+    assert.deepStrictEqual(row.slot, slotRef('uv', 'venv'));
   });
 
   test('rows sort by SDK then plug name within a section', () => {
@@ -189,7 +189,7 @@ suite('buildSections', () => {
     assert.deepStrictEqual(build({ snapshot: snapshot({}) }), []);
   });
 
-  test('connect-to-sdk appears on a connected host row only when SDK slots exist', () => {
+  test('a connected host row offers only remount, never a connect target', () => {
     const base = {
       established: [{ plug: plugRef('node', 'npm-cache'), slot: HOST_SLOT }],
       plugs: [{ ...plugRef('node', 'npm-cache') }],
@@ -201,41 +201,64 @@ suite('buildSections', () => {
       snapshot: snapshot({ ...base, slots: [{ ...HOST_SLOT }] }),
     });
 
-    assert.deepStrictEqual(withSdk[0].rows[0].menu, ['remount', 'connect-to-sdk']);
-    assert.deepStrictEqual(withoutSdk[0].rows[0].menu, ['remount']);
+    assert.deepStrictEqual(withSdk[0].rows[0].menu, [{ kind: 'remount' }]);
+    assert.deepStrictEqual(withoutSdk[0].rows[0].menu, [{ kind: 'remount' }]);
   });
 
-  test('connect-to-sdk ignores SDK slots on a different interface', () => {
+  test('connect candidates on a disconnected row ignore other-interface slots', () => {
     const base = {
-      established: [{ plug: plugRef('node', 'npm-cache'), slot: HOST_SLOT, interface: 'mount' }],
       plugs: [{ ...plugRef('node', 'npm-cache'), interface: 'mount' }],
     };
     const sameIface = build({
-      snapshot: snapshot({ ...base, slots: [{ ...HOST_SLOT }, { ...slotRef('uv', 'venv'), interface: 'mount' }] }),
+      snapshot: snapshot({ ...base, slots: [{ ...HOST_SLOT, interface: 'mount' }, { ...slotRef('uv', 'venv'), interface: 'mount' }] }),
     });
     const otherIface = build({
       snapshot: snapshot({ ...base, slots: [{ ...HOST_SLOT }, { ...slotRef('net', 'link'), interface: 'tunnel' }] }),
     });
 
-    assert.deepStrictEqual(sameIface[0].rows[0].menu, ['remount', 'connect-to-sdk']);
-    assert.deepStrictEqual(otherIface[0].rows[0].menu, ['remount'], 'a tunnel slot is not a mount candidate');
+    assert.deepStrictEqual(
+      sameIface[0].rows[0].menu,
+      [{ kind: 'connect', slot: slotRef('uv', 'venv') }],
+      "the row's own slot is the host, so the host itself is excluded but the SDK slot is offered",
+    );
+    assert.deepStrictEqual(otherIface[0].rows[0].menu, [], 'a tunnel slot is not a mount candidate');
   });
 });
 
 suite('sdkSlotCandidates / fallbackTarget', () => {
-  test('candidates are the non-system slots on the given interface, sorted', () => {
+  test('candidates are every slot on the plug interface, including the host, sorted', () => {
     const candidates = sdkSlotCandidates(snapshot({
+      plugs: [{ ...plugRef('node', 'npm-cache'), interface: 'mount' }],
       slots: [
-        { ...HOST_SLOT },
+        { ...HOST_SLOT, interface: 'mount' },
         { ...slotRef('uv', 'venv'), interface: 'mount' },
         { ...slotRef('go', 'share'), interface: 'mount' },
         { ...slotRef('net', 'link'), interface: 'tunnel' },
       ],
-    }), 'mount');
+    }), plugRef('node', 'npm-cache'));
     assert.deepStrictEqual(
       candidates.map((s) => `${s.sdk}:${s.slot}`),
-      ['go:share', 'uv:venv'],
-      'host and other-interface slots are excluded',
+      ['go:share', 'system:mount', 'uv:venv'],
+      'a different-interface slot is excluded; the host is a valid candidate',
+    );
+  });
+
+  test('the slot the plug is already connected to is excluded', () => {
+    const candidates = sdkSlotCandidates(snapshot({
+      plugs: [{
+        ...plugRef('node', 'npm-cache'),
+        interface: 'mount',
+        connections: [slotRef('uv', 'venv')],
+      }],
+      slots: [
+        { ...slotRef('uv', 'venv'), interface: 'mount' },
+        { ...slotRef('go', 'share'), interface: 'mount' },
+      ],
+    }), plugRef('node', 'npm-cache'));
+    assert.deepStrictEqual(
+      candidates.map((s) => `${s.sdk}:${s.slot}`),
+      ['go:share'],
+      'the already-connected slot is not offered again',
     );
   });
 

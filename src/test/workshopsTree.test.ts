@@ -335,6 +335,36 @@ suite('WorkshopsTreeProvider', () => {
     provider.dispose();
   });
 
+  test('workshopNameForItem resolves a workshop row and its stamped detail children', async () => {
+    const workshops: Workshop[] = [{ name: 'web', status: 'On', projectId: 'proj-1' }];
+    const poller = new WorkshopPoller<Workshop[]>(() => Promise.resolve(workshops), 50_000);
+    const provider = new WorkshopsTreeProvider(poller, {
+      getWorkshop: async () => ({
+        'project-id': 'proj-1',
+        name: 'web',
+        base: 'ubuntu@24.04',
+        status: 'ready',
+        sdks: [{ name: 'node', channel: '22/stable' }],
+      }),
+    });
+
+    await poller.poll();
+    const workshop = provider.getChildren()[0];
+    assert.strictEqual(provider.workshopNameForItem(workshop), 'web');
+
+    provider.getChildren(workshop);
+    await new Promise((resolve) => setImmediate(resolve));
+    const children = provider.getChildren(workshop) as vscode.TreeItem[];
+    for (const child of children) {
+      assert.strictEqual(provider.workshopNameForItem(child), 'web');
+    }
+
+    assert.strictEqual(provider.workshopNameForItem(new vscode.TreeItem('unrelated')), undefined);
+
+    poller.dispose();
+    provider.dispose();
+  });
+
   test('loads workshop details for waiting workshops', async () => {
     const workshops: Workshop[] = [{ name: 'web', status: 'Waiting', projectId: 'proj-1' }];
     const poller = new WorkshopPoller<Workshop[]>(() => Promise.resolve(workshops), 50_000);

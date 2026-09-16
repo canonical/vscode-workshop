@@ -1,4 +1,6 @@
+import { isSlotRef } from '../api/connections';
 import { PanelData } from './data';
+import { MountMenuItem } from './model';
 
 /**
  * The message protocol between the extension host and the mounts webview.
@@ -10,10 +12,18 @@ import { PanelData } from './data';
 
 export type ExtToWebview =
   | { type: 'state'; state: PanelData }
-  /** Settles a whole toggle burst for one row (ok:false → snap back). */
+  /**
+   * Settles a whole toggle burst for one row. The switch already reflects
+   * daemon truth by the time this arrives — a poll runs right before every
+   * exit from the burst's convergence loop — so `ok` isn't needed to snap
+   * the switch back; it records whether the burst actually converged, for a
+   * future UI (e.g. a failure indicator) that wants to tell "gave up" apart
+   * from "succeeded".
+   */
   | { type: 'actionResult'; rowId: string; ok: boolean };
 
-export type MenuAction = 'remount' | 'connect-to-sdk';
+/** A menu choice: remount, or connect the row's plug to a specific slot. */
+export type MenuAction = MountMenuItem;
 
 export type WebviewToExt =
   | { type: 'ready' }
@@ -24,8 +34,6 @@ export type WebviewToExt =
   | { type: 'toggle'; rowId: string; desired: boolean }
   | { type: 'menu'; rowId: string; action: MenuAction }
   | { type: 'reveal'; path: string };
-
-const MENU_ACTIONS: readonly string[] = ['remount', 'connect-to-sdk'];
 
 /** Validate a message received from the webview. */
 export function isWebviewToExt(message: unknown): message is WebviewToExt {
@@ -39,12 +47,21 @@ export function isWebviewToExt(message: unknown): message is WebviewToExt {
     case 'toggle':
       return typeof msg.rowId === 'string' && typeof msg.desired === 'boolean';
     case 'menu':
-      return typeof msg.rowId === 'string'
-        && typeof msg.action === 'string'
-        && MENU_ACTIONS.includes(msg.action);
+      return typeof msg.rowId === 'string' && isMenuAction(msg.action);
     case 'reveal':
       return typeof msg.path === 'string';
     default:
       return false;
   }
+}
+
+function isMenuAction(value: unknown): value is MenuAction {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const action = value as Record<string, unknown>;
+  if (action.kind === 'remount') {
+    return true;
+  }
+  return action.kind === 'connect' && isSlotRef(action.slot);
 }
