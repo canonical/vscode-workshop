@@ -112,9 +112,13 @@ body {
 .val.dash { color: var(--muted); }
 .sub { font-size: 11px; color: var(--muted); margin-top: 3px; overflow-wrap: anywhere; }
 .mono { font-family: var(--mono); }
-a.link { color: var(--link); text-decoration: none; cursor: pointer; }
-a.link:hover { text-decoration: underline; }
-a.link:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+/* Reveal control: a button (an action, not a navigation) painted as a link. */
+button.link {
+  padding: 0; border: none; background: none; font: inherit; text-align: left;
+  color: var(--link); text-decoration: none; cursor: pointer;
+}
+button.link:hover { text-decoration: underline; }
+button.link:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
 
 /* Status column control. Rows align to the top, so the control centres itself. */
 .statusc { display: flex; align-items: center; min-height: 20px; }
