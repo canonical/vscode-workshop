@@ -4,12 +4,16 @@ All notable changes to the "workshop" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
-## [Unreleased]
+## [0.5.3] - 17-09-2026
 
 ### Changed
 
 - README: feature overview, screenshots, and a link to the step-by-step guide
   in the Workshop documentation
+
+### Added
+
+- Workshop mount interface panel
 
 ## [0.5.0] - 27-08-2026
 
