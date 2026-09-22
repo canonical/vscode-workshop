@@ -3,7 +3,7 @@
   "displayName": "Workshop",
   "description": "Use workshops as a development environment in VS Code",
   "publisher": "canonical",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "license": "MIT",
   "homepage": "https://github.com/canonical/vscode-workshop",
   "bugs": {
