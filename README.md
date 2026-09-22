@@ -2,7 +2,7 @@
 
 Develop inside [Workshop](https://ubuntu.com/workshop) containers directly from VS Code. Workshop launches [LXD](https://canonical.com/lxd) system containers with Ubuntu from simple YAML definitions checked into your project, giving each project a clean, reproducible environment that the whole team shares.
 
-![VS Code connected to the dev workshop, with the Workshops side bar expanded](media/screenshots/connected-window.png)
+![Reopening a project in a Workshop container from VS Code](media/vscode-ext.gif)
 
 ## Features
 
