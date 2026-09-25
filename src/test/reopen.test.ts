@@ -187,6 +187,28 @@ suite('reopenInWorkshop', () => {
     }
   });
 
+  test('passes a progress reporter to onBeforeOpen', async () => {
+    const { server, wss } = await startFakeDaemon(socketPath, {});
+    try {
+      const client = new WorkshopClient({ socketPath });
+      const workshop: Workshop = { name: 'web', status: 'On', rawStatus: 'ready', hostname: 'web.proj-1.wp', projectId: 'proj-1' };
+      let progressArg: unknown;
+      let reported = false;
+      await captureCommands(() => reopenInWorkshop(client, workshop, {
+        onBeforeOpen: (_hostname, progress) => {
+          progressArg = progress;
+          progress?.('Installing VS Code server…');
+          reported = true;
+        },
+      }));
+      assert.strictEqual(typeof progressArg, 'function');
+      assert.strictEqual(reported, true);
+    } finally {
+      wss.close();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
   test('calls the start action before connecting for a stopped workshop', async () => {
     const actionBodies: unknown[] = [];
     const originalCreate = http.createServer.bind(http);
