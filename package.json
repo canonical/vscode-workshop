@@ -230,7 +230,7 @@
         "url": "https://raw.githubusercontent.com/canonical/workshop/v0.9.7/docs/reference/definition-files/schema.json"
       },
       {
-        "fileMatch": "sdkcraft.yaml",
+        "fileMatch": ["sdkcraft.yaml", ".sdkcraft.yaml"],
         "url": "https://raw.githubusercontent.com/canonical/workshop/v0.9.7/docs/reference/definition-files/schema-sdkcraft.json"
       },
       {
