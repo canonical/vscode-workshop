@@ -223,6 +223,20 @@
           "highContrastLight": "#E95420"
         }
       }
+    ],
+    "yamlValidation": [
+      {
+        "fileMatch": ["workshop.yaml", ".workshop.yaml", ".workshop/*.yaml"],
+        "url": "https://raw.githubusercontent.com/canonical/workshop/v0.9.7/docs/reference/definition-files/schema.json"
+      },
+      {
+        "fileMatch": "sdkcraft.yaml",
+        "url": "https://raw.githubusercontent.com/canonical/workshop/v0.9.7/docs/reference/definition-files/schema-sdkcraft.json"
+      },
+      {
+        "fileMatch": ".workshop/*/*.yaml",
+        "url": "https://raw.githubusercontent.com/canonical/workshop/v0.9.7/docs/reference/definition-files/schema-sdk.json"
+      }
     ]
   },
   "scripts": {
