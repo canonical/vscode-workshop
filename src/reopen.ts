@@ -16,7 +16,10 @@ export type RefreshMode = 'wait-on-error' | 'continue' | 'abort';
 export interface ReopenCallbacks {
   onLog?: (lines: string[]) => void;
   /** Persist any state needed by the new window before this host is replaced. */
-  onBeforeOpen?: (hostname: string) => Thenable<void> | void;
+  onBeforeOpen?: (
+    hostname: string,
+    progress?: (message: string) => void,
+  ) => Thenable<void> | void;
   onPause?: (error: string) => Promise<PauseChoice>;
 }
 
@@ -72,7 +75,10 @@ export async function reopenInWorkshop(
 
       progress.report({ message: 'Opening…' });
       const uri = vscode.Uri.parse(`vscode-remote://ssh-remote+${connectedHostname}/project`);
-      await callbacks.onBeforeOpen?.(connectedHostname);
+      await callbacks.onBeforeOpen?.(
+        connectedHostname,
+        (message) => progress.report({ message }),
+      );
       await vscode.commands.executeCommand('vscode.openFolder', uri, {
         forceReuseWindow: true,
       });
