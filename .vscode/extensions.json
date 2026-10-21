@@ -3,7 +3,8 @@
   // for the documentation about the extensions.json format
   "recommendations": [
     "dbaeumer.vscode-eslint",
-    "ms-vscode-remote.remote-ssh"
+    "ms-vscode-remote.remote-ssh",
+    "redhat.vscode-yaml"
   ],
   // The Extension Test Runner launches an Electron VS Code host that needs an X
   // server. In this headless workshop environment that integration is unreliable,
