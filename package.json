@@ -223,7 +223,17 @@
           "highContrastLight": "#E95420"
         }
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Workshop",
+      "properties": {
+        "workshop.preinstallServer": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Pre-install a matching VS Code server into a workshop over SSH before connecting, so Remote-SSH does not download it on the (air-gapped) host. Disable to fall back to stock Remote-SSH behaviour."
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run package",

@@ -33,6 +33,7 @@ import {
 } from './state';
 import { LogsView } from './ui/logsView';
 import { createOpenPrompt } from './ui/openPrompt';
+import { installServer } from './serverInstall';
 import { WorkshopItem } from './ui/workshopsTree';
 import {
   currentWorkshop,
@@ -61,6 +62,48 @@ interface WorkshopCommandDependencies {
   wizard?: (deps: WizardDeps) => Promise<WizardResult | undefined>;
   runInit?: (spec: InitSpec) => Promise<unknown>;
   workspaceFolders?: () => { name: string; path: string }[];
+  /** Local VS Code `appRoot` (holds `product.json`); enables server pre-install. */
+  appRoot?: string;
+  /** Persistent storage root for the downloaded server cache. */
+  globalStorageUri?: vscode.Uri;
+  /** Seed a matching server before Remote-SSH connects; injected in tests. */
+  preinstallServer?: (hostname: string, progress?: (message: string) => void) => Promise<void>;
+}
+
+/**
+ * Build the default server pre-install seam. Gated on the `workshop.preinstallServer`
+ * setting; nudges Remote-SSH to prefer a local-download-then-SCP so an air-gapped
+ * host never fetches the server itself.
+ */
+function defaultPreinstallServer(
+  appRoot: string,
+  globalStorageUri: vscode.Uri | undefined,
+  log: vscode.LogOutputChannel,
+): (hostname: string, progress?: (message: string) => void) => Promise<void> {
+  return async (hostname, progress) => {
+    if (!globalStorageUri) {
+      return;
+    }
+    const config = vscode.workspace.getConfiguration('workshop');
+    if (!config.get<boolean>('preinstallServer', true)) {
+      return;
+    }
+    const sshConfig = vscode.workspace.getConfiguration('remote.SSH');
+    if (sshConfig.get<string>('localServerDownload') !== 'always') {
+      await sshConfig.update(
+        'localServerDownload',
+        'always',
+        vscode.ConfigurationTarget.Global,
+      );
+    }
+    await installServer({
+      hostname,
+      appRoot,
+      cacheDir: vscode.Uri.joinPath(globalStorageUri, 'server-cache').fsPath,
+      log,
+      progress,
+    });
+  };
 }
 
 /** Create command handlers that share the extension's long-lived dependencies. */
@@ -74,15 +117,21 @@ export function createWorkshopCommands({
   runInit = runWorkshopInit,
   workspaceFolders = () => (vscode.workspace.workspaceFolders ?? [])
     .map((folder) => ({ name: folder.name, path: folder.uri.fsPath })),
+  appRoot = vscode.env.appRoot,
+  globalStorageUri,
+  preinstallServer = defaultPreinstallServer(appRoot, globalStorageUri, log),
 }: WorkshopCommandDependencies): WorkshopCommands {
   let wizardOpen = false;
   function withSession(workshop: Workshop, callbacks: ReopenCallbacks): ReopenCallbacks {
     return {
       ...callbacks,
-      onBeforeOpen: (hostname) => writeSession(globalState, hostname, {
-        projectId: workshop.projectId,
-        workshopName: workshop.name,
-      }),
+      onBeforeOpen: async (hostname, progress) => {
+        await writeSession(globalState, hostname, {
+          projectId: workshop.projectId,
+          workshopName: workshop.name,
+        });
+        await preinstallServer(hostname, progress);
+      },
     };
   }
 
