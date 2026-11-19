@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 
 import { WorkshopClient } from './api/client';
+import { ensureLoginShellTerminals } from './api/loginShell';
 import { listProjectWorkshops, Workshop } from './api/workshops';
 import { createMountsActions } from './interfaces/actions';
 import { fetchPanelData, PanelData } from './interfaces/data';
@@ -109,7 +110,14 @@ export function activate(context: vscode.ExtensionContext): void {
   if (treeView.visible) {
     onViewVisible();
   }
-  if (!isWorkshopWindow()) {
+  if (isWorkshopWindow()) {
+    const session = currentWorkshop(context.globalState)?.session;
+    if (session) {
+      ensureLoginShellTerminals(client, session.projectId, session.workshopName).catch((err: unknown) => {
+        log.warn(`Couldn't make workshop terminals login shells: ${err instanceof Error ? err.message : String(err)}`);
+      });
+    }
+  } else {
     workshopCommands.activateLocalProject();
   }
 
