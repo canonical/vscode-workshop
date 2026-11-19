@@ -1,4 +1,5 @@
 import * as assert from 'assert';
+import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as http from 'http';
 import * as os from 'os';
@@ -7,7 +8,40 @@ import * as path from 'path';
 import { WebSocket, WebSocketServer } from 'ws';
 
 import { WorkshopClient } from '../api/client';
-import { ensureLoginShellTerminals } from '../api/loginShell';
+import { ensureLoginShellTerminals, WRITE_IF_ABSENT } from '../api/loginShell';
+
+suite('WRITE_IF_ABSENT script', () => {
+  let home: string;
+  let settings: string;
+
+  const run = (input: string) => spawnSync('sh', ['-c', WRITE_IF_ABSENT], { env: { ...process.env, HOME: home }, input });
+
+  setup(() => {
+    home = fs.mkdtempSync(path.join(os.tmpdir(), 'workshop-home-'));
+    settings = path.join(home, '.vscode-server', 'data', 'Machine', 'settings.json');
+  });
+
+  teardown(() => fs.rmSync(home, { recursive: true, force: true }));
+
+  test('creates the settings file and its parent directories when absent', () => {
+    assert.strictEqual(run('{"new": true}').status, 0);
+    assert.strictEqual(fs.readFileSync(settings, 'utf8'), '{"new": true}');
+  });
+
+  test('leaves an existing settings file untouched and succeeds', () => {
+    fs.mkdirSync(path.dirname(settings), { recursive: true });
+    fs.writeFileSync(settings, '{"mine": 1}');
+
+    assert.strictEqual(run('{"new": true}').status, 0);
+    assert.strictEqual(fs.readFileSync(settings, 'utf8'), '{"mine": 1}');
+  });
+
+  test('fails when the settings directory cannot be created', () => {
+    fs.writeFileSync(path.join(home, '.vscode-server'), '');
+
+    assert.notStrictEqual(run('{}').status, 0);
+  });
+});
 
 suite('ensureLoginShellTerminals over a fake workshopd socket', () => {
   let server: http.Server;
@@ -71,10 +105,7 @@ suite('ensureLoginShellTerminals over a fake workshopd socket', () => {
   test('writes a login-shell default profile only when machine settings are absent', async () => {
     await ensureLoginShellTerminals(new WorkshopClient({ socketPath }), 'p', 'web');
 
-    const [shell, flag, script] = execBody!.command;
-    assert.deepStrictEqual([shell, flag], ['sh', '-c']);
-    assert.match(script, /\.vscode-server\/data\/Machine\/settings\.json/);
-    assert.match(script, /\[ -e "\$f" \] \|\|/);
+    assert.deepStrictEqual(execBody!.command, ['sh', '-c', WRITE_IF_ABSENT]);
     assert.deepStrictEqual(JSON.parse(stdin.toString('utf8')), {
       'terminal.integrated.profiles.linux': { bash: { path: 'bash', args: ['-l'] } },
       'terminal.integrated.defaultProfile.linux': 'bash',

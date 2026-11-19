@@ -7,8 +7,8 @@ const LOGIN_SHELL_SETTINGS = `{
 }
 `;
 
-// Leaves any existing machine settings untouched.
-const WRITE_IF_ABSENT = 'f="$HOME/.vscode-server/data/Machine/settings.json"; [ -e "$f" ] || { mkdir -p "${f%/*}" && cat > "$f"; }';
+// noclobber creates with O_EXCL, so existing machine settings are never overwritten.
+export const WRITE_IF_ABSENT = 'f="$HOME/.vscode-server/data/Machine/settings.json"; mkdir -p "${f%/*}" && { set -C; cat > "$f"; } || [ -e "$f" ]';
 
 /**
  * Default the workshop's VS Code Server terminals to a login shell, so they get
