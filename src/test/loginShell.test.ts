@@ -34,12 +34,27 @@ suite('WRITE_IF_ABSENT script', () => {
 
     assert.strictEqual(run('{"new": true}').status, 0);
     assert.strictEqual(fs.readFileSync(settings, 'utf8'), '{"mine": 1}');
+    assert.deepStrictEqual(fs.readdirSync(path.dirname(settings)), ['settings.json']);
   });
 
   test('fails when the settings directory cannot be created', () => {
     fs.writeFileSync(path.join(home, '.vscode-server'), '');
 
     assert.notStrictEqual(run('{}').status, 0);
+  });
+
+  test('fails without leaving a partial settings file when the write fails', () => {
+    const bin = path.join(home, 'bin');
+    fs.mkdirSync(bin);
+    fs.writeFileSync(path.join(bin, 'cat'), '#!/bin/sh\nprintf \'{"partial\'\nexit 1\n', { mode: 0o755 });
+
+    const result = spawnSync('sh', ['-c', WRITE_IF_ABSENT], {
+      env: { ...process.env, HOME: home, PATH: `${bin}:${process.env.PATH}` },
+      input: '{}',
+    });
+
+    assert.notStrictEqual(result.status, 0);
+    assert.deepStrictEqual(fs.readdirSync(path.dirname(settings)), []);
   });
 });
 
