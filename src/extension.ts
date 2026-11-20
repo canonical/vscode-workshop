@@ -105,9 +105,6 @@ export function activate(context: vscode.ExtensionContext): void {
 
   if (treeView.visible) {
     onViewVisible();
-  } else if (selection.selected !== undefined) {
-    // Drop a workshop that is gone even while the tree stays closed.
-    void poller.poll();
   }
   if (!isWorkshopWindow()) {
     workshopCommands.activateLocalProject();
