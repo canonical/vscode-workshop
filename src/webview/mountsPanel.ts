@@ -16,6 +16,8 @@ import { ExtToWebview, WebviewToExt } from '../interfaces/protocol';
 
 interface VsCodeApi {
   postMessage(message: WebviewToExt): void;
+  getState(): { tab: string } | undefined;
+  setState(state: { tab: string }): void;
 }
 
 declare function acquireVsCodeApi(): VsCodeApi;
@@ -79,6 +81,8 @@ for (const tab of tabs) {
 
 function switchTab(tab: string): void {
   activeTab = tab;
+  // VS Code keeps webview state per workspace, across hides and reloads.
+  vscode.setState({ tab });
   for (const el of tabs) {
     const active = el.dataset.tab === tab;
     el.classList.toggle('active', active);
@@ -337,5 +341,5 @@ window.addEventListener('mousedown', (event) => {
 window.addEventListener('scroll', () => closeMenu(), true);
 window.addEventListener('blur', () => closeMenu());
 
-switchTab('mounts');
+switchTab(vscode.getState()?.tab ?? 'mounts');
 vscode.postMessage({ type: 'ready' });
