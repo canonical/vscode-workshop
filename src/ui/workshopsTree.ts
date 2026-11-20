@@ -182,6 +182,7 @@ export class WorkshopsTreeProvider
   readonly onDidChangeTreeData = this.emitter.event;
 
   private cachedItems: Workshop[] = [];
+  private hasListed = false;
   private readonly details = new Map<string, DetailState>();
   private viewState: ViewState = 'ready';
   private activeWorkshopName: string | undefined;
@@ -200,6 +201,7 @@ export class WorkshopsTreeProvider
       poller.onDidUpdate((workshops) => {
         this.pruneDetails(workshops);
         this.cachedItems = workshops;
+        this.hasListed = true;
         const nextState: ViewState = workshops.length === 0 ? 'empty' : 'ready';
         this.viewState = nextState;
         void this.setViewState(nextState);
@@ -259,6 +261,11 @@ export class WorkshopsTreeProvider
   /** Only workshop rows are revealed, and they are roots. */
   getParent(): undefined {
     return undefined;
+  }
+
+  /** Whether the workshops have been listed at least once. */
+  get listed(): boolean {
+    return this.hasListed;
   }
 
   /** The row of the named workshop in the last poll, if it still exists. */

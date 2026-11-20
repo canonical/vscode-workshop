@@ -112,7 +112,7 @@ export function activate(context: vscode.ExtensionContext): void {
   workshopPanel.setSelectedWorkshop(restoring);
 
   function restoreSelection(): void {
-    if (restoring === undefined || poller.lastValue === undefined) {
+    if (restoring === undefined || !provider.listed) {
       return;
     }
     const item = provider.workshopItem(restoring);
@@ -160,7 +160,7 @@ export function activate(context: vscode.ExtensionContext): void {
       void poller.poll();
     }),
     vscode.window.registerFileDecorationProvider(provider.decorationProvider),
-    poller.onDidUpdate(restoreSelection),
+    provider.onDidChangeTreeData(restoreSelection),
     treeView.onDidChangeSelection(() => {
       // A workshop row or any of its children switches the panel; other
       // selections keep the current workshop shown.
