@@ -166,7 +166,6 @@ export function activate(context: vscode.ExtensionContext): void {
       // selections keep the current workshop shown.
       const name = selectedTreeWorkshop();
       if (name !== undefined) {
-        restoring = undefined;
         rememberSelection(name);
         // Already shown, e.g. restored on activation: leave a closed panel closed.
         if (name === workshopPanel.selectedWorkshop) {
