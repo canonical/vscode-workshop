@@ -103,9 +103,6 @@ export function activate(context: vscode.ExtensionContext): void {
     }
   }
 
-  if (treeView.visible) {
-    onViewVisible();
-  }
   if (!isWorkshopWindow()) {
     workshopCommands.activateLocalProject();
   }
