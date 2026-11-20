@@ -5,7 +5,7 @@ import { MountMenuItem } from './model';
 /**
  * The message protocol between the extension host and the mounts webview.
  * Both sides are bundled from this repo and share these types (the webview
- * bundle is built from `src/webview/mountsPanel.ts`), but the webview is
+ * bundle is built from `src/webview/workshopPanel.ts`), but the webview is
  * still untrusted input to the extension: everything arriving from it goes
  * through {@link isWebviewToExt} and is re-validated against current state.
  */

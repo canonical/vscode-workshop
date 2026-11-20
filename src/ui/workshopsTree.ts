@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { WorkshopClient, WorkshopInfo, WorkshopNotProjectError, WorkshopUnavailableError } from '../api/client';
 import { WorkshopPoller } from '../poller';
+import { SELECTED_WORKSHOP_KEY } from '../state';
 import { WorkshopIncompatibleError } from '../version';
 import { statusIcon } from './statusIcon';
 import { Workshop } from '../api/workshops';
@@ -182,6 +183,7 @@ export class WorkshopsTreeProvider
   readonly onDidChangeTreeData = this.emitter.event;
 
   private cachedItems: Workshop[] = [];
+  private hasListed = false;
   private readonly details = new Map<string, DetailState>();
   private viewState: ViewState = 'ready';
   private activeWorkshopName: string | undefined;
@@ -200,6 +202,7 @@ export class WorkshopsTreeProvider
       poller.onDidUpdate((workshops) => {
         this.pruneDetails(workshops);
         this.cachedItems = workshops;
+        this.hasListed = true;
         const nextState: ViewState = workshops.length === 0 ? 'empty' : 'ready';
         this.viewState = nextState;
         void this.setViewState(nextState);
@@ -254,6 +257,22 @@ export class WorkshopsTreeProvider
       const active = w.name === this.activeWorkshopName;
       return new WorkshopItem(w, active, this.extensionUri);
     });
+  }
+
+  /** Only workshop rows are revealed, and they are roots. */
+  getParent(): undefined {
+    return undefined;
+  }
+
+  /** Whether the workshops have been listed at least once. */
+  get listed(): boolean {
+    return this.hasListed;
+  }
+
+  /** The row of the named workshop in the last poll, if it still exists. */
+  workshopItem(name: string): WorkshopItem | undefined {
+    const workshop = this.cachedItems.find((w) => w.name === name);
+    return workshop && new WorkshopItem(workshop, name === this.activeWorkshopName, this.extensionUri);
   }
 
   private key(workshop: Workshop): string {
@@ -372,6 +391,82 @@ export class WorkshopsTreeProvider
 
   private setViewState(state: ViewState): Thenable<unknown> {
     return vscode.commands.executeCommand('setContext', VIEW_STATE_CONTEXT, state);
+  }
+
+  dispose(): void {
+    this.emitter.dispose();
+    for (const sub of this.subscriptions) {
+      sub.dispose();
+    }
+  }
+}
+
+/**
+ * The workshop selected in the tree — a workshop row or any of its detail
+ * children. A local window remembers it across activations; a workshop window
+ * selects the workshop it is connected to. Either is restored once the tree
+ * lists it, and dropped if it is gone.
+ */
+export class WorkshopSelection implements vscode.Disposable {
+  private readonly emitter = new vscode.EventEmitter<string | undefined>();
+  /** Fires when the selected workshop changes. */
+  readonly onDidChange = this.emitter.event;
+
+  private current: string | undefined;
+  private restoring: string | undefined;
+  private readonly subscriptions: vscode.Disposable[];
+
+  constructor(
+    private readonly treeView: vscode.TreeView<vscode.TreeItem>,
+    private readonly provider: WorkshopsTreeProvider,
+    /** Where a local window remembers the selection; none in a workshop window. */
+    private readonly memento: vscode.Memento | undefined,
+    connected: string | undefined,
+  ) {
+    this.current = memento ? memento.get<string>(SELECTED_WORKSHOP_KEY) : connected;
+    this.restoring = this.current;
+    this.subscriptions = [
+      provider.onDidChangeTreeData(() => this.restore()),
+      treeView.onDidChangeVisibility(() => this.restore()),
+      treeView.onDidChangeSelection(() => {
+        for (const item of treeView.selection) {
+          const name = provider.workshopNameForItem(item);
+          if (name !== undefined) {
+            this.select(name);
+            return;
+          }
+        }
+      }),
+    ];
+  }
+
+  /** The selected workshop, or the one still to restore. */
+  get selected(): string | undefined {
+    return this.current;
+  }
+
+  private restore(): void {
+    if (this.restoring === undefined || !this.provider.listed) {
+      return;
+    }
+    const item = this.provider.workshopItem(this.restoring);
+    if (item === undefined) {
+      this.select(undefined);
+    } else if (this.treeView.visible) {
+      void this.treeView.reveal(item, { select: true, focus: false });
+    } else {
+      return; // reveal would open the closed view
+    }
+    this.restoring = undefined;
+  }
+
+  private select(name: string | undefined): void {
+    if (name === this.current) {
+      return;
+    }
+    this.current = name;
+    void this.memento?.update(SELECTED_WORKSHOP_KEY, name);
+    this.emitter.fire(name);
   }
 
   dispose(): void {

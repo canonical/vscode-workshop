@@ -35,6 +35,9 @@ export type PendingOperation =
 export const SESSIONS_KEY = 'workshop.sessions';
 export const PENDING_OPS_KEY = 'workshop.pendingOps';
 
+/** `workspaceState` key: the workshop last selected in a local window's tree. */
+export const SELECTED_WORKSHOP_KEY = 'workshop.selectedWorkshop';
+
 // ---------------------------------------------------------------------------
 // Hostname helpers
 // ---------------------------------------------------------------------------

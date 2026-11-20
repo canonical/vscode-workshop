@@ -46,14 +46,14 @@ async function main() {
 	// types with the extension side. Output is generated (gitignored).
 	const webviewCtx = await esbuild.context({
 		entryPoints: [
-			'src/webview/mountsPanel.ts'
+			'src/webview/workshopPanel.ts'
 		],
 		bundle: true,
 		format: 'iife',
 		minify: production,
 		sourcemap: false,
 		platform: 'browser',
-		outfile: 'media/mountsPanel.js',
+		outfile: 'media/workshopPanel.js',
 		logLevel: 'silent',
 		plugins: [
 			esbuildProblemMatcherPlugin,
