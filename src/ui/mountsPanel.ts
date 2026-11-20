@@ -78,7 +78,7 @@ export class MountsPanelProvider implements vscode.WebviewViewProvider, vscode.D
     });
   }
 
-  /** The workshop the panel is bound to (provider-held, never persisted). */
+  /** The workshop the panel is bound to (provider-held; the extension restores it). */
   get selectedWorkshop(): string | undefined {
     return this.selected;
   }

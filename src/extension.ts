@@ -7,6 +7,7 @@ import { fetchPanelData, PanelData } from './interfaces/data';
 import { MSG_NO_WORKSHOPS } from './interfaces/panelState';
 import { WorkshopOperationQueue } from './interfaces/queue';
 import { WorkshopPoller } from './poller';
+import { SELECTED_WORKSHOP_KEY } from './state';
 import { assertWorkshopVersionCompatible } from './version';
 import { createDefinitionWatcher } from './ui/definitionWatcher';
 import { LogsView } from './ui/logsView';
@@ -95,7 +96,36 @@ export function activate(context: vscode.ExtensionContext): void {
     }
     return undefined;
   }
-  mountsPanel.setSelectedWorkshop(selectedTreeWorkshop());
+
+  // Only a local window remembers its selection; a workshop window always
+  // selects the workshop it is connected to.
+  function rememberSelection(name: string | undefined): void {
+    if (!isWorkshopWindow()) {
+      void context.workspaceState.update(SELECTED_WORKSHOP_KEY, name);
+    }
+  }
+
+  // The workshop to select in the tree once a poll lists it.
+  let restoring = isWorkshopWindow()
+    ? currentWorkshop(context.globalState)?.session?.workshopName
+    : context.workspaceState.get<string>(SELECTED_WORKSHOP_KEY);
+  mountsPanel.setSelectedWorkshop(restoring);
+
+  function restoreSelection(): void {
+    if (restoring === undefined || poller.lastValue === undefined) {
+      return;
+    }
+    const item = provider.workshopItem(restoring);
+    if (item === undefined) {
+      mountsPanel.setSelectedWorkshop(undefined);
+      rememberSelection(undefined);
+    } else if (treeView.visible) {
+      void treeView.reveal(item, { select: true, focus: false });
+    } else {
+      return; // reveal would open the closed view
+    }
+    restoring = undefined;
+  }
 
   let activationHandle: vscode.Disposable | undefined;
   function onViewVisible(): void {
@@ -104,10 +134,14 @@ export function activate(context: vscode.ExtensionContext): void {
     if (workshopName) {
       provider.setActiveWorkshop(workshopName);
     }
+    restoreSelection();
   }
 
   if (treeView.visible) {
     onViewVisible();
+  } else if (restoring !== undefined) {
+    // Drop a workshop that is gone even while the tree stays closed.
+    void poller.poll();
   }
   if (!isWorkshopWindow()) {
     workshopCommands.activateLocalProject();
@@ -126,11 +160,18 @@ export function activate(context: vscode.ExtensionContext): void {
       void poller.poll();
     }),
     vscode.window.registerFileDecorationProvider(provider.decorationProvider),
+    poller.onDidUpdate(restoreSelection),
     treeView.onDidChangeSelection(() => {
       // A workshop row or any of its children switches the panel; other
       // selections keep the current workshop shown.
       const name = selectedTreeWorkshop();
       if (name !== undefined) {
+        restoring = undefined;
+        rememberSelection(name);
+        // Already shown, e.g. restored on activation: leave a closed panel closed.
+        if (name === mountsPanel.selectedWorkshop) {
+          return;
+        }
         mountsPanel.setSelectedWorkshop(name);
         // Surface the panel if it's collapsed/closed; leave it alone (and
         // leave focus on the tree) if it's already showing.
