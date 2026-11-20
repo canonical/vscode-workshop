@@ -365,6 +365,25 @@ suite('WorkshopsTreeProvider', () => {
     provider.dispose();
   });
 
+  test('workshopItem finds a root row of the last poll, or none once the workshop is gone', async () => {
+    let workshops: Workshop[] = [{ name: 'web', status: 'On', projectId: 'proj-1' }];
+    const poller = new WorkshopPoller<Workshop[]>(() => Promise.resolve(workshops), 50_000);
+    const provider = new WorkshopsTreeProvider(poller, fakeDetailsClient);
+
+    await poller.poll();
+    const item = provider.workshopItem('web');
+    assert.strictEqual(item?.label, 'web');
+    assert.strictEqual(provider.getParent(), undefined);
+    assert.strictEqual(provider.workshopItem('db'), undefined);
+
+    workshops = [];
+    await poller.poll();
+    assert.strictEqual(provider.workshopItem('web'), undefined);
+
+    poller.dispose();
+    provider.dispose();
+  });
+
   test('loads workshop details for waiting workshops', async () => {
     const workshops: Workshop[] = [{ name: 'web', status: 'Waiting', projectId: 'proj-1' }];
     const poller = new WorkshopPoller<Workshop[]>(() => Promise.resolve(workshops), 50_000);

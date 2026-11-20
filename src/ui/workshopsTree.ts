@@ -256,6 +256,17 @@ export class WorkshopsTreeProvider
     });
   }
 
+  /** Only workshop rows are revealed, and they are roots. */
+  getParent(): undefined {
+    return undefined;
+  }
+
+  /** The row of the named workshop in the last poll, if it still exists. */
+  workshopItem(name: string): WorkshopItem | undefined {
+    const workshop = this.cachedItems.find((w) => w.name === name);
+    return workshop && new WorkshopItem(workshop, name === this.activeWorkshopName, this.extensionUri);
+  }
+
   private key(workshop: Workshop): string {
     return `${workshop.projectId}-${workshop.name}`;
   }
