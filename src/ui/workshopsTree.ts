@@ -375,6 +375,11 @@ export class WorkshopsTreeProvider
     this.emitter.fire();
   }
 
+  /** The workshop the current window is connected to, if any. */
+  get activeWorkshop(): string | undefined {
+    return this.activeWorkshopName;
+  }
+
   /**
    * The workshop a selected tree item belongs to — a workshop row itself, or
    * one of its detail children (stamped in {@link infoChildren}).
@@ -421,9 +426,8 @@ export class WorkshopSelection implements vscode.Disposable {
     private readonly provider: WorkshopsTreeProvider,
     /** Where a local window remembers the selection; none in a workshop window. */
     private readonly memento: vscode.Memento | undefined,
-    connected: string | undefined,
   ) {
-    this.current = memento ? memento.get<string>(SELECTED_WORKSHOP_KEY) : connected;
+    this.current = memento ? memento.get<string>(SELECTED_WORKSHOP_KEY) : provider.activeWorkshop;
     this.restoring = this.current;
     this.subscriptions = [
       provider.onDidChangeTreeData(() => this.restore()),

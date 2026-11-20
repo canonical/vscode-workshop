@@ -85,11 +85,11 @@ export function activate(context: vscode.ExtensionContext): void {
   }
   updateTreeViewTitle();
 
+  provider.setActiveWorkshop(currentWorkshop(context.globalState)?.session?.workshopName);
   const selection = new WorkshopSelection(
     treeView,
     provider,
     isWorkshopWindow() ? undefined : context.workspaceState,
-    currentWorkshop(context.globalState)?.session?.workshopName,
   );
   // The panel follows the workshop selected in the tree.
   workshopPanel.setSelectedWorkshop(selection.selected);
@@ -97,10 +97,6 @@ export function activate(context: vscode.ExtensionContext): void {
   let activationHandle: vscode.Disposable | undefined;
   function onViewVisible(): void {
     activationHandle ??= poller.activate();
-    const workshopName = currentWorkshop(context.globalState)?.session?.workshopName;
-    if (workshopName) {
-      provider.setActiveWorkshop(workshopName);
-    }
   }
 
   if (!isWorkshopWindow()) {
