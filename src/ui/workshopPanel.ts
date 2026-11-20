@@ -7,7 +7,8 @@ import { MountRow } from '../interfaces/model';
 import { ExtToWebview, isWebviewToExt, MenuAction } from '../interfaces/protocol';
 import { WorkshopPoller } from '../poller';
 
-export const MOUNTS_VIEW_ID = 'workshop.mounts';
+// Kept from when the panel only had Mounts: VS Code stores the panel's state under it.
+export const PANEL_VIEW_ID = 'workshop.mounts';
 
 /** Minimal logging surface so tests can pass a plain object. */
 export interface MountsLog {
@@ -27,7 +28,7 @@ export interface MountsActions {
   menu(row: MountRow, action: MenuAction): Promise<void>;
 }
 
-export interface MountsPanelDeps {
+export interface WorkshopPanelDeps {
   /** One tick: fetch the panel data for the given selection. */
   loadData(selection: string | undefined): Promise<PanelData>;
   log: MountsLog;
@@ -40,7 +41,7 @@ export interface MountsPanelDeps {
 }
 
 /**
- * Webview view provider for the Mounts tab of the Workshop panel. Owns the
+ * Webview view provider for the Workshop panel. Owns the
  * PanelData poller (activated only while the view is visible), the current
  * workshop selection (held across view disposal — the extension pushes it on
  * activation and on tree-selection change, so a reopened view keeps following
@@ -50,7 +51,7 @@ export interface MountsPanelDeps {
  * The webview is untrusted: every inbound message is shape-checked and menu
  * actions are re-validated against the current row's menu extension-side.
  */
-export class MountsPanelProvider implements vscode.WebviewViewProvider, vscode.Disposable {
+export class WorkshopPanelProvider implements vscode.WebviewViewProvider, vscode.Disposable {
   private readonly poller: WorkshopPoller<PanelData>;
   private view: vscode.WebviewView | undefined;
   private activationHandle: vscode.Disposable | undefined;
@@ -62,7 +63,7 @@ export class MountsPanelProvider implements vscode.WebviewViewProvider, vscode.D
   private readonly desiredByRow = new Map<string, boolean>();
 
   constructor(
-    private readonly deps: MountsPanelDeps,
+    private readonly deps: WorkshopPanelDeps,
     private readonly extensionUri?: vscode.Uri,
   ) {
     this.poller = new WorkshopPoller<PanelData>(
@@ -299,8 +300,8 @@ export function renderPanelHtml(
   extensionUri: vscode.Uri,
   nonce: string = crypto.randomBytes(16).toString('base64'),
 ): string {
-  const cssUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'mountsPanel.css'));
-  const jsUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'mountsPanel.js'));
+  const cssUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'workshopPanel.css'));
+  const jsUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'workshopPanel.js'));
   const csp = `default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}'`;
   return `<!DOCTYPE html>
 <html lang="en">

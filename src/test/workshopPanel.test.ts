@@ -6,9 +6,9 @@ import { MountRow } from '../interfaces/model';
 import { ExtToWebview, isWebviewToExt, MenuAction } from '../interfaces/protocol';
 import {
   MountsActions,
-  MountsPanelProvider,
+  WorkshopPanelProvider,
   renderPanelHtml,
-} from '../ui/mountsPanel';
+} from '../ui/workshopPanel';
 
 function row(overrides: Partial<MountRow>): MountRow {
   return {
@@ -39,10 +39,10 @@ function makeProvider(options: {
   data?: PanelData | ((selection: string | undefined) => PanelData);
   actions?: MountsActions;
   reveal?: (path: string) => void;
-}): { provider: MountsPanelProvider; posted: ExtToWebview[]; loads: (string | undefined)[] } {
+}): { provider: WorkshopPanelProvider; posted: ExtToWebview[]; loads: (string | undefined)[] } {
   const posted: ExtToWebview[] = [];
   const loads: (string | undefined)[] = [];
-  const provider = new MountsPanelProvider({
+  const provider = new WorkshopPanelProvider({
     loadData: async (selection) => {
       loads.push(selection);
       const data = options.data ?? tableData([]);
@@ -92,8 +92,8 @@ suite('renderPanelHtml', () => {
     assert.ok(html.includes("default-src 'none'"));
     assert.ok(html.includes(`style-src ${webview.cspSource}`));
     assert.ok(html.includes("script-src 'nonce-NONCE123'"));
-    assert.ok(html.includes('<script nonce="NONCE123" src="converted:/ext/media/mountsPanel.js">'));
-    assert.ok(html.includes('converted:/ext/media/mountsPanel.css'));
+    assert.ok(html.includes('<script nonce="NONCE123" src="converted:/ext/media/workshopPanel.js">'));
+    assert.ok(html.includes('converted:/ext/media/workshopPanel.css'));
     assert.ok(!/\son\w+=/.test(html), 'no inline event handlers');
   });
 
@@ -112,7 +112,7 @@ suite('renderPanelHtml', () => {
   });
 });
 
-suite('MountsPanelProvider', () => {
+suite('WorkshopPanelProvider', () => {
   test('ready polls and pushes the state', async () => {
     const { provider, posted } = makeProvider({ data: tableData([row({})]) });
     await provider.handleMessage({ type: 'ready' });

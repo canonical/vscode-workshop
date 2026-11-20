@@ -11,7 +11,7 @@ import { ExtToWebview, WebviewToExt } from '../interfaces/protocol';
  *
  * All user-derived text is set via `textContent`; `innerHTML` is used only
  * for three hard-coded SVG glyphs. Bundled by esbuild (iife, browser) into
- * `media/mountsPanel.js`.
+ * `media/workshopPanel.js`.
  */
 
 interface VsCodeApi {

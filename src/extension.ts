@@ -11,8 +11,8 @@ import { SELECTED_WORKSHOP_KEY } from './state';
 import { assertWorkshopVersionCompatible } from './version';
 import { createDefinitionWatcher } from './ui/definitionWatcher';
 import { LogsView } from './ui/logsView';
-import { MOUNTS_VIEW_ID, MountsPanelProvider } from './ui/mountsPanel';
 import { createMountsUi } from './ui/mountsUi';
+import { PANEL_VIEW_ID, WorkshopPanelProvider } from './ui/workshopPanel';
 import {
   VIEW_STATE_CONTEXT,
   WorkshopsTreeProvider,
@@ -62,7 +62,7 @@ export function activate(context: vscode.ExtensionContext): void {
     queue: new WorkshopOperationQueue(),
     log,
   });
-  const mountsPanel = new MountsPanelProvider(
+  const workshopPanel = new WorkshopPanelProvider(
     {
       loadData: async (selection): Promise<PanelData> => {
         const projectId = await projects.getId();
@@ -109,7 +109,7 @@ export function activate(context: vscode.ExtensionContext): void {
   let restoring = isWorkshopWindow()
     ? currentWorkshop(context.globalState)?.session?.workshopName
     : context.workspaceState.get<string>(SELECTED_WORKSHOP_KEY);
-  mountsPanel.setSelectedWorkshop(restoring);
+  workshopPanel.setSelectedWorkshop(restoring);
 
   function restoreSelection(): void {
     if (restoring === undefined || poller.lastValue === undefined) {
@@ -117,7 +117,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }
     const item = provider.workshopItem(restoring);
     if (item === undefined) {
-      mountsPanel.setSelectedWorkshop(undefined);
+      workshopPanel.setSelectedWorkshop(undefined);
       rememberSelection(undefined);
     } else if (treeView.visible) {
       void treeView.reveal(item, { select: true, focus: false });
@@ -152,8 +152,8 @@ export function activate(context: vscode.ExtensionContext): void {
     poller,
     provider,
     treeView,
-    mountsPanel,
-    vscode.window.registerWebviewViewProvider(MOUNTS_VIEW_ID, mountsPanel),
+    workshopPanel,
+    vscode.window.registerWebviewViewProvider(PANEL_VIEW_ID, workshopPanel),
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
       updateTreeViewTitle();
       projects.invalidate();
@@ -169,14 +169,14 @@ export function activate(context: vscode.ExtensionContext): void {
         restoring = undefined;
         rememberSelection(name);
         // Already shown, e.g. restored on activation: leave a closed panel closed.
-        if (name === mountsPanel.selectedWorkshop) {
+        if (name === workshopPanel.selectedWorkshop) {
           return;
         }
-        mountsPanel.setSelectedWorkshop(name);
+        workshopPanel.setSelectedWorkshop(name);
         // Surface the panel if it's collapsed/closed; leave it alone (and
         // leave focus on the tree) if it's already showing.
-        if (!mountsPanel.visible) {
-          void vscode.commands.executeCommand(`${MOUNTS_VIEW_ID}.focus`, { preserveFocus: true });
+        if (!workshopPanel.visible) {
+          void vscode.commands.executeCommand(`${PANEL_VIEW_ID}.focus`, { preserveFocus: true });
         }
       }
     }),
