@@ -371,10 +371,10 @@ suite('WorkshopsTreeProvider', () => {
     let workshops: Workshop[] = [{ name: 'web', status: 'On', projectId: 'proj-1' }];
     const poller = new WorkshopPoller<Workshop[]>(() => Promise.resolve(workshops), 50_000);
     const provider = new WorkshopsTreeProvider(poller, fakeDetailsClient);
-    assert.strictEqual(provider.listed, false);
+    assert.strictEqual(provider.loaded, false);
 
     await poller.poll();
-    assert.strictEqual(provider.listed, true);
+    assert.strictEqual(provider.loaded, true);
     const item = provider.workshopItem('web');
     assert.strictEqual(item?.label, 'web');
     assert.strictEqual(provider.getParent(), undefined);

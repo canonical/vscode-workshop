@@ -182,7 +182,7 @@ export class WorkshopsTreeProvider
   private readonly emitter = new vscode.EventEmitter<vscode.TreeItem | undefined | null | void>();
   readonly onDidChangeTreeData = this.emitter.event;
 
-  /** The last listed workshops; undefined until the first listing. */
+  /** The last loaded workshops; undefined until the first load. */
   private cachedItems: Workshop[] | undefined;
   private readonly details = new Map<string, DetailState>();
   private viewState: ViewState = 'ready';
@@ -252,7 +252,7 @@ export class WorkshopsTreeProvider
     if (this.viewState !== 'ready') {
       return [];
     }
-    return (this.cachedItems ?? []).map((w) => {
+    return this.workshops.map((w) => {
       const active = w.name === this.activeWorkshopName;
       return new WorkshopItem(w, active, this.extensionUri);
     });
@@ -263,14 +263,19 @@ export class WorkshopsTreeProvider
     return undefined;
   }
 
-  /** Whether the workshops have been listed at least once. */
-  get listed(): boolean {
+  /** Whether the workshops have been loaded at least once. */
+  get loaded(): boolean {
     return this.cachedItems !== undefined;
+  }
+
+  /** The last loaded workshops; none before the first load. */
+  private get workshops(): Workshop[] {
+    return this.cachedItems ?? [];
   }
 
   /** The row of the named workshop in the last poll, if it still exists. */
   workshopItem(name: string): WorkshopItem | undefined {
-    const workshop = this.cachedItems?.find((w) => w.name === name);
+    const workshop = this.workshops.find((w) => w.name === name);
     return workshop && new WorkshopItem(workshop, name === this.activeWorkshopName, this.extensionUri);
   }
 
@@ -279,7 +284,7 @@ export class WorkshopsTreeProvider
   }
 
   private pruneDetails(workshops: Workshop[]): void {
-    const previous = new Map((this.cachedItems ?? []).map((workshop) => [this.key(workshop), workshop]));
+    const previous = new Map(this.workshops.map((workshop) => [this.key(workshop), workshop]));
     const currentKeys = new Set(workshops.map((workshop) => this.key(workshop)));
 
     for (const key of this.details.keys()) {
@@ -370,7 +375,7 @@ export class WorkshopsTreeProvider
   /** Update which workshop the current window is connected to. */
   setActiveWorkshop(name: string | undefined): void {
     this.activeWorkshopName = name;
-    this.decorationProvider.update(this.cachedItems ?? [], name);
+    this.decorationProvider.update(this.workshops, name);
     this.emitter.fire();
   }
 
@@ -445,7 +450,7 @@ export class WorkshopSelection implements vscode.Disposable {
   }
 
   private restore(): void {
-    if (this.restoring === undefined || !this.provider.listed) {
+    if (this.restoring === undefined || !this.provider.loaded) {
       return;
     }
     const item = this.provider.workshopItem(this.restoring);
