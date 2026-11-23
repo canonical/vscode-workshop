@@ -182,8 +182,8 @@ export class WorkshopsTreeProvider
   private readonly emitter = new vscode.EventEmitter<vscode.TreeItem | undefined | null | void>();
   readonly onDidChangeTreeData = this.emitter.event;
 
-  private cachedItems: Workshop[] = [];
-  private hasListed = false;
+  /** The last listed workshops; undefined until the first listing. */
+  private cachedItems: Workshop[] | undefined;
   private readonly details = new Map<string, DetailState>();
   private viewState: ViewState = 'ready';
   private activeWorkshopName: string | undefined;
@@ -202,7 +202,6 @@ export class WorkshopsTreeProvider
       poller.onDidUpdate((workshops) => {
         this.pruneDetails(workshops);
         this.cachedItems = workshops;
-        this.hasListed = true;
         const nextState: ViewState = workshops.length === 0 ? 'empty' : 'ready';
         this.viewState = nextState;
         void this.setViewState(nextState);
@@ -253,7 +252,7 @@ export class WorkshopsTreeProvider
     if (this.viewState !== 'ready') {
       return [];
     }
-    return this.cachedItems.map((w) => {
+    return (this.cachedItems ?? []).map((w) => {
       const active = w.name === this.activeWorkshopName;
       return new WorkshopItem(w, active, this.extensionUri);
     });
@@ -266,12 +265,12 @@ export class WorkshopsTreeProvider
 
   /** Whether the workshops have been listed at least once. */
   get listed(): boolean {
-    return this.hasListed;
+    return this.cachedItems !== undefined;
   }
 
   /** The row of the named workshop in the last poll, if it still exists. */
   workshopItem(name: string): WorkshopItem | undefined {
-    const workshop = this.cachedItems.find((w) => w.name === name);
+    const workshop = this.cachedItems?.find((w) => w.name === name);
     return workshop && new WorkshopItem(workshop, name === this.activeWorkshopName, this.extensionUri);
   }
 
@@ -280,7 +279,7 @@ export class WorkshopsTreeProvider
   }
 
   private pruneDetails(workshops: Workshop[]): void {
-    const previous = new Map(this.cachedItems.map((workshop) => [this.key(workshop), workshop]));
+    const previous = new Map((this.cachedItems ?? []).map((workshop) => [this.key(workshop), workshop]));
     const currentKeys = new Set(workshops.map((workshop) => this.key(workshop)));
 
     for (const key of this.details.keys()) {
@@ -371,7 +370,7 @@ export class WorkshopsTreeProvider
   /** Update which workshop the current window is connected to. */
   setActiveWorkshop(name: string | undefined): void {
     this.activeWorkshopName = name;
-    this.decorationProvider.update(this.cachedItems, name);
+    this.decorationProvider.update(this.cachedItems ?? [], name);
     this.emitter.fire();
   }
 
