@@ -92,7 +92,7 @@ export function activate(context: vscode.ExtensionContext): void {
     currentWorkshop(context.globalState)?.session?.workshopName,
   );
   // The panel follows the workshop selected in the tree.
-  workshopPanel.setSelectedWorkshop(selection.selected);
+  workshopPanel.setSelectedWorkshop(selection.pending);
 
   let activationHandle: vscode.Disposable | undefined;
   function onViewVisible(): void {
@@ -122,6 +122,10 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.registerFileDecorationProvider(provider.decorationProvider),
     selection,
     selection.onDidChange((name) => {
+      // Already shown, e.g. restored on activation: leave a closed panel closed.
+      if (name === workshopPanel.selectedWorkshop) {
+        return;
+      }
       workshopPanel.setSelectedWorkshop(name);
       // Surface the panel if it's collapsed/closed; leave it alone (and
       // leave focus on the tree) if it's already showing.

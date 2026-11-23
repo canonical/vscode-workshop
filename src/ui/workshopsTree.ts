@@ -413,11 +413,10 @@ export class WorkshopsTreeProvider
  */
 export class WorkshopSelection implements vscode.Disposable {
   private readonly emitter = new vscode.EventEmitter<string | undefined>();
-  /** Fires when the selected workshop changes. */
+  /** Fires with each workshop selected in the tree; `undefined` when the one to restore is gone. */
   readonly onDidChange = this.emitter.event;
 
-  private current: string | undefined;
-  private restoring: string | undefined;
+  private pendingName: string | undefined;
   private readonly subscriptions: vscode.Disposable[];
 
   constructor(
@@ -427,8 +426,7 @@ export class WorkshopSelection implements vscode.Disposable {
     private readonly memento: vscode.Memento | undefined,
     connected: string | undefined,
   ) {
-    this.current = memento ? memento.get<string>(SELECTED_WORKSHOP_KEY) : connected;
-    this.restoring = this.current;
+    this.pendingName = memento ? memento.get<string>(SELECTED_WORKSHOP_KEY) : connected;
     this.subscriptions = [
       provider.onDidChangeTreeData(() => this.restore()),
       treeView.onDidChangeVisibility(() => this.restore()),
@@ -444,16 +442,16 @@ export class WorkshopSelection implements vscode.Disposable {
     ];
   }
 
-  /** The selected workshop, or the one still to restore. */
-  get selected(): string | undefined {
-    return this.current;
+  /** The workshop still to select in the tree once it is loaded. */
+  get pending(): string | undefined {
+    return this.pendingName;
   }
 
   private restore(): void {
-    if (this.restoring === undefined || !this.provider.loaded) {
+    if (this.pendingName === undefined || !this.provider.loaded) {
       return;
     }
-    const item = this.provider.workshopItem(this.restoring);
+    const item = this.provider.workshopItem(this.pendingName);
     if (item === undefined) {
       this.select(undefined);
     } else if (this.treeView.visible) {
@@ -461,14 +459,10 @@ export class WorkshopSelection implements vscode.Disposable {
     } else {
       return; // reveal would open the closed view
     }
-    this.restoring = undefined;
+    this.pendingName = undefined;
   }
 
   private select(name: string | undefined): void {
-    if (name === this.current) {
-      return;
-    }
-    this.current = name;
     void this.memento?.update(SELECTED_WORKSHOP_KEY, name);
     this.emitter.fire(name);
   }
