@@ -7,8 +7,7 @@ import { MountRow } from '../interfaces/model';
 import { ExtToWebview, isWebviewToExt, MenuAction } from '../interfaces/protocol';
 import { WorkshopPoller } from '../poller';
 
-// Kept from when the panel only had Mounts: VS Code stores the panel's state under it.
-export const PANEL_VIEW_ID = 'workshop.mounts';
+export const PANEL_VIEW_ID = 'workshop.panel';
 
 /** Minimal logging surface so tests can pass a plain object. */
 export interface MountsLog {
