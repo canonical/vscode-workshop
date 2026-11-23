@@ -613,11 +613,11 @@ function makeSelection(options: {
   const provider = new WorkshopsTreeProvider(poller, fakeDetailsClient);
   const view = new FakeTreeView();
   view.visible = options.visible ?? true;
-  provider.setActiveWorkshop(options.connected);
   const selection = new WorkshopSelection(
     view as unknown as vscode.TreeView<vscode.TreeItem>,
     provider,
     options.memento,
+    options.connected,
   );
   const changes: (string | undefined)[] = [];
   selection.onDidChange((name) => changes.push(name));
