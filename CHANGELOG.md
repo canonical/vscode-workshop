@@ -4,6 +4,27 @@ All notable changes to the "workshop" extension will be documented in this file.
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.6.0] - 25-11-2026
+
+### Added
+
+- Workshop terminals default to a login shell
+- Remember the selected workshop and the active Workshop panel tab across
+  reloads
+- Label the workshop the window is connected to as "Active"
+
+### Changed
+
+- Rename the mounts panel to the Workshop panel and the mounts "Status" column
+  to "Enabled"
+- Update dependencies
+
+### Fixed
+
+- Workshop commands no longer crash when run from the Command Palette; only
+  Add New Workshop, Reopen in Workshop and Reopen Locally are shown there, and
+  Reopen in Workshop prompts for a workshop
+
 ## [0.5.5] - 21-10-2026
 
 ### Added
