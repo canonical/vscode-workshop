@@ -32,7 +32,7 @@ import {
   writeSession,
 } from './state';
 import { LogsView } from './ui/logsView';
-import { createOpenPrompt } from './ui/openPrompt';
+import { createOpenPrompt, pickWorkshop } from './ui/openPrompt';
 import { WorkshopItem } from './ui/workshopsTree';
 import {
   currentWorkshop,
@@ -43,7 +43,7 @@ import {
 export interface WorkshopCommands {
   activateLocalProject(): void;
   definitionChanged(filePath: string, cached: Workshop[] | undefined): void;
-  reopenInWorkshop(item: WorkshopItem): void;
+  reopenInWorkshop(item?: WorkshopItem): Promise<void>;
   reopenLocally(): Promise<void>;
   refresh(item: WorkshopItem, mode?: RefreshMode): void;
   openDefinition(arg: WorkshopItem | string): void;
@@ -340,16 +340,33 @@ export function createWorkshopCommands({
     });
   }
 
-  function reopenInWorkshopCommand(item: WorkshopItem): void {
+  // Command Palette invocations pass no tree item.
+  async function pickProjectWorkshop(): Promise<Workshop | undefined> {
+    const projectId = await projects.getId();
+    const workshops = projectId
+      ? (await listProjectWorkshops(client, projectId)).filter((w) => w.definitionPath !== undefined)
+      : [];
+    if (workshops.length === 0) {
+      void vscode.window.showInformationMessage('No workshops available to reopen in.');
+      return undefined;
+    }
+    return pickWorkshop(workshops, vscode.workspace.workspaceFolders?.[0]?.uri.fsPath);
+  }
+
+  async function reopenInWorkshopCommand(item?: WorkshopItem): Promise<void> {
+    const workshop = item instanceof WorkshopItem ? item.workshop : await pickProjectWorkshop();
+    if (!workshop) {
+      return;
+    }
     const logLines: string[] = [];
     const callbacks: ReopenCallbacks = { onLog: (lines) => logLines.push(...lines) };
     reopenInWorkshop(
       client,
-      item.workshop,
-      withSession(item.workshop, callbacks),
+      workshop,
+      withSession(workshop, callbacks),
     ).catch((err: unknown) => {
-      log.error(`Couldn't reopen in workshop ${item.workshop.name}: ${err instanceof Error ? err.message : String(err)}`);
-      void showResolvedWorkshopError(item.workshop, err, logLines);
+      log.error(`Couldn't reopen in workshop ${workshop.name}: ${err instanceof Error ? err.message : String(err)}`);
+      void showResolvedWorkshopError(workshop, err, logLines);
     });
   }
 

@@ -158,6 +158,34 @@
         {
           "command": "workshop.addWorkshop",
           "when": "remoteName != 'ssh-remote' && (workshop.viewState == 'ready' || workshop.viewState == 'empty')"
+        },
+        {
+          "command": "workshop.poll",
+          "when": "false"
+        },
+        {
+          "command": "workshop.install",
+          "when": "false"
+        },
+        {
+          "command": "workshop.refreshAndReopen",
+          "when": "false"
+        },
+        {
+          "command": "workshop.openDefinition",
+          "when": "false"
+        },
+        {
+          "command": "workshop.continueRefresh",
+          "when": "false"
+        },
+        {
+          "command": "workshop.abortRefresh",
+          "when": "false"
+        },
+        {
+          "command": "workshop.turnOff",
+          "when": "false"
         }
       ],
       "view/title": [
