@@ -136,7 +136,7 @@ function renderSection(section: MountSection): HTMLElement {
 
   const head = document.createElement('div');
   head.className = 'thead';
-  for (const header of [section.sourceHeader, 'Workshop Target', 'Status', '']) {
+  for (const header of [section.sourceHeader, 'Workshop Target', 'Enabled', '']) {
     const cell = document.createElement('div');
     cell.className = 'cell th';
     cell.textContent = header;
