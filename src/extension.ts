@@ -167,7 +167,7 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     vscode.commands.registerCommand(
       'workshop.reopenInWorkshop',
-      (item: WorkshopItem) => workshopCommands.reopenInWorkshop(item),
+      (item?: WorkshopItem) => workshopCommands.reopenInWorkshop(item),
     ),
     vscode.commands.registerCommand(
       'workshop.reopenLocally',
