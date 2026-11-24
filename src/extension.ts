@@ -92,7 +92,7 @@ export function activate(context: vscode.ExtensionContext): void {
     currentWorkshop(context.globalState)?.session?.workshopName,
   );
   // The panel follows the workshop selected in the tree.
-  workshopPanel.setSelectedWorkshop(selection.pending);
+  workshopPanel.setSelectedWorkshop(selection.toRestore);
 
   let activationHandle: vscode.Disposable | undefined;
   function onViewVisible(): void {

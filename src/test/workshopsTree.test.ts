@@ -640,12 +640,12 @@ suite('WorkshopSelection', () => {
     await memento.update(SELECTED_WORKSHOP_KEY, 'db');
     const { poller, view, selection, changes, dispose } = makeSelection({ workshops: twoWorkshops, memento });
 
-    assert.strictEqual(selection.pending, 'db');
+    assert.strictEqual(selection.toRestore, 'db');
     assert.deepStrictEqual(view.revealed, []);
     await poller.poll();
     assert.deepStrictEqual(view.revealed, ['db']);
     assert.deepStrictEqual(changes, ['db']);
-    assert.strictEqual(selection.pending, undefined);
+    assert.strictEqual(selection.toRestore, undefined);
 
     dispose();
   });
@@ -656,7 +656,7 @@ suite('WorkshopSelection', () => {
       connected: 'web',
     });
 
-    assert.strictEqual(selection.pending, 'web');
+    assert.strictEqual(selection.toRestore, 'web');
     await poller.poll();
     assert.deepStrictEqual(view.revealed, ['web']);
 
@@ -689,7 +689,7 @@ suite('WorkshopSelection', () => {
     });
 
     await poller.poll();
-    assert.strictEqual(selection.pending, undefined);
+    assert.strictEqual(selection.toRestore, undefined);
     assert.deepStrictEqual(changes, [undefined]);
     assert.strictEqual(memento.get(SELECTED_WORKSHOP_KEY), undefined);
     assert.deepStrictEqual(view.revealed, []);

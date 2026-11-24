@@ -416,7 +416,7 @@ export class WorkshopSelection implements vscode.Disposable {
   /** Fires with each workshop selected in the tree; `undefined` when the one to restore is gone. */
   readonly onDidChange = this.emitter.event;
 
-  private pendingName: string | undefined;
+  private nameToRestore: string | undefined;
   private readonly subscriptions: vscode.Disposable[];
 
   constructor(
@@ -426,7 +426,7 @@ export class WorkshopSelection implements vscode.Disposable {
     private readonly memento: vscode.Memento | undefined,
     connected: string | undefined,
   ) {
-    this.pendingName = memento ? memento.get<string>(SELECTED_WORKSHOP_KEY) : connected;
+    this.nameToRestore = memento ? memento.get<string>(SELECTED_WORKSHOP_KEY) : connected;
     this.subscriptions = [
       provider.onDidChangeTreeData(() => this.restore()),
       treeView.onDidChangeVisibility(() => this.restore()),
@@ -443,15 +443,15 @@ export class WorkshopSelection implements vscode.Disposable {
   }
 
   /** The workshop still to select in the tree once it is loaded. */
-  get pending(): string | undefined {
-    return this.pendingName;
+  get toRestore(): string | undefined {
+    return this.nameToRestore;
   }
 
   private restore(): void {
-    if (this.pendingName === undefined || !this.provider.loaded) {
+    if (this.nameToRestore === undefined || !this.provider.loaded) {
       return;
     }
-    const item = this.provider.workshopItem(this.pendingName);
+    const item = this.provider.workshopItem(this.nameToRestore);
     if (item === undefined) {
       this.select(undefined);
     } else if (this.treeView.visible) {
@@ -459,7 +459,7 @@ export class WorkshopSelection implements vscode.Disposable {
     } else {
       return; // reveal would open the closed view
     }
-    this.pendingName = undefined;
+    this.nameToRestore = undefined;
   }
 
   private select(name: string | undefined): void {
