@@ -7,6 +7,7 @@ import { fetchPanelData, PanelData } from './interfaces/data';
 import { MSG_NO_WORKSHOPS } from './interfaces/panelState';
 import { WorkshopOperationQueue } from './interfaces/queue';
 import { WorkshopPoller } from './poller';
+import { SELECTED_WORKSHOP_KEY } from './state';
 import { assertWorkshopVersionCompatible } from './version';
 import { createDefinitionWatcher } from './ui/definitionWatcher';
 import { LogsView } from './ui/logsView';
@@ -85,11 +86,15 @@ export function activate(context: vscode.ExtensionContext): void {
   }
   updateTreeViewTitle();
 
+  // A local window remembers its selection; a workshop window selects the one it is connected to.
+  const memento = isWorkshopWindow() ? undefined : context.workspaceState;
   const selection = new WorkshopSelection(
     treeView,
     provider,
-    isWorkshopWindow() ? undefined : context.workspaceState,
-    currentWorkshop(context.globalState)?.session?.workshopName,
+    memento
+      ? memento.get<string>(SELECTED_WORKSHOP_KEY)
+      : currentWorkshop(context.globalState)?.session?.workshopName,
+    memento,
   );
   // The panel follows the workshop selected in the tree.
   workshopPanel.setSelectedWorkshop(selection.toRestore);

@@ -407,26 +407,24 @@ export class WorkshopsTreeProvider
 
 /**
  * The workshop selected in the tree — a workshop row or any of its detail
- * children. A local window remembers it across activations; a workshop window
- * selects the workshop it is connected to. Either is restored once the tree
- * lists it, and dropped if it is gone.
+ * children. The given workshop is selected once the tree lists it, and dropped
+ * if it is gone.
  */
 export class WorkshopSelection implements vscode.Disposable {
   private readonly emitter = new vscode.EventEmitter<string | undefined>();
   /** Fires with each workshop selected in the tree; `undefined` when the one to restore is gone. */
   readonly onDidChange = this.emitter.event;
 
-  private workshopName: string | undefined;
   private readonly subscriptions: vscode.Disposable[];
 
   constructor(
     private readonly treeView: vscode.TreeView<vscode.TreeItem>,
     private readonly provider: WorkshopsTreeProvider,
-    /** Where a local window remembers the selection; none in a workshop window. */
+    /** The workshop to select once the tree is loaded. */
+    private workshopName: string | undefined,
+    /** Where to remember each selection; none to remember nothing. */
     private readonly memento: vscode.Memento | undefined,
-    connected: string | undefined,
   ) {
-    this.workshopName = memento ? memento.get<string>(SELECTED_WORKSHOP_KEY) : connected;
     this.subscriptions = [
       provider.onDidChangeTreeData(() => this.restore()),
       treeView.onDidChangeVisibility(() => this.restore()),

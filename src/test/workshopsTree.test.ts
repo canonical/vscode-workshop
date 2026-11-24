@@ -616,8 +616,8 @@ function makeSelection(options: {
   const selection = new WorkshopSelection(
     view as unknown as vscode.TreeView<vscode.TreeItem>,
     provider,
+    options.memento ? options.memento.get<string>(SELECTED_WORKSHOP_KEY) : options.connected,
     options.memento,
-    options.connected,
   );
   const changes: (string | undefined)[] = [];
   selection.onDidChange((name) => changes.push(name));
