@@ -19,5 +19,5 @@ agents. A spec that seems to allow a breach is wrong, not the rule.
    user's hand edit plus a refresh.
 4. **Consistency.** New features reuse what exists rather than reinvent it.
    For example, new tabs (Devices, …) extend the existing panel (files named
-   `mountsPanel.*` plus `src/interfaces/`): add a tab, cell renderers and a
+   `workshopPanel.*` plus `src/interfaces/`): add a tab, cell renderers and a
    row type. No second webview or table.

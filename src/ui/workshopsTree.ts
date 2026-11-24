@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { WorkshopClient, WorkshopInfo, WorkshopNotProjectError, WorkshopUnavailableError } from '../api/client';
 import { WorkshopPoller } from '../poller';
+import { SELECTED_WORKSHOP_KEY } from '../state';
 import { WorkshopIncompatibleError } from '../version';
 import { statusIcon } from './statusIcon';
 import { Workshop } from '../api/workshops';
@@ -181,7 +182,8 @@ export class WorkshopsTreeProvider
   private readonly emitter = new vscode.EventEmitter<vscode.TreeItem | undefined | null | void>();
   readonly onDidChangeTreeData = this.emitter.event;
 
-  private cachedItems: Workshop[] = [];
+  /** The last loaded workshops; undefined until the first load. */
+  private cachedItems: Workshop[] | undefined;
   private readonly details = new Map<string, DetailState>();
   private viewState: ViewState = 'ready';
   private activeWorkshopName: string | undefined;
@@ -250,10 +252,31 @@ export class WorkshopsTreeProvider
     if (this.viewState !== 'ready') {
       return [];
     }
-    return this.cachedItems.map((w) => {
+    return this.workshops.map((w) => {
       const active = w.name === this.activeWorkshopName;
       return new WorkshopItem(w, active, this.extensionUri);
     });
+  }
+
+  /** Only workshop rows are revealed, and they are roots. */
+  getParent(): undefined {
+    return undefined;
+  }
+
+  /** Whether the workshops have been loaded at least once. */
+  get loaded(): boolean {
+    return this.cachedItems !== undefined;
+  }
+
+  /** The last loaded workshops; none before the first load. */
+  private get workshops(): Workshop[] {
+    return this.cachedItems ?? [];
+  }
+
+  /** The row of the named workshop in the last poll, if it still exists. */
+  workshopItem(name: string): WorkshopItem | undefined {
+    const workshop = this.workshops.find((w) => w.name === name);
+    return workshop && new WorkshopItem(workshop, name === this.activeWorkshopName, this.extensionUri);
   }
 
   private key(workshop: Workshop): string {
@@ -261,7 +284,7 @@ export class WorkshopsTreeProvider
   }
 
   private pruneDetails(workshops: Workshop[]): void {
-    const previous = new Map(this.cachedItems.map((workshop) => [this.key(workshop), workshop]));
+    const previous = new Map(this.workshops.map((workshop) => [this.key(workshop), workshop]));
     const currentKeys = new Set(workshops.map((workshop) => this.key(workshop)));
 
     for (const key of this.details.keys()) {
@@ -352,7 +375,7 @@ export class WorkshopsTreeProvider
   /** Update which workshop the current window is connected to. */
   setActiveWorkshop(name: string | undefined): void {
     this.activeWorkshopName = name;
-    this.decorationProvider.update(this.cachedItems, name);
+    this.decorationProvider.update(this.workshops, name);
     this.emitter.fire();
   }
 
@@ -372,6 +395,74 @@ export class WorkshopsTreeProvider
 
   private setViewState(state: ViewState): Thenable<unknown> {
     return vscode.commands.executeCommand('setContext', VIEW_STATE_CONTEXT, state);
+  }
+
+  dispose(): void {
+    this.emitter.dispose();
+    for (const sub of this.subscriptions) {
+      sub.dispose();
+    }
+  }
+}
+
+/**
+ * The workshop selected in the tree — a workshop row or any of its detail
+ * children. The given workshop is selected once the tree lists it, and dropped
+ * if it is gone.
+ */
+export class WorkshopSelection implements vscode.Disposable {
+  private readonly emitter = new vscode.EventEmitter<string | undefined>();
+  /** Fires with each workshop selected in the tree; `undefined` when the one to restore is gone. */
+  readonly onDidChange = this.emitter.event;
+
+  private readonly subscriptions: vscode.Disposable[];
+
+  constructor(
+    private readonly treeView: vscode.TreeView<vscode.TreeItem>,
+    private readonly provider: WorkshopsTreeProvider,
+    /** The workshop to select once the tree is loaded. */
+    private workshopName: string | undefined,
+    /** Where to remember each selection; none to remember nothing. */
+    private readonly memento: vscode.Memento | undefined,
+  ) {
+    this.subscriptions = [
+      provider.onDidChangeTreeData(() => this.restore()),
+      treeView.onDidChangeVisibility(() => this.restore()),
+      treeView.onDidChangeSelection(() => {
+        for (const item of treeView.selection) {
+          const name = provider.workshopNameForItem(item);
+          if (name !== undefined) {
+            this.select(name);
+            return;
+          }
+        }
+      }),
+    ];
+  }
+
+  /** The workshop still to select in the tree once it is loaded. */
+  get toRestore(): string | undefined {
+    return this.workshopName;
+  }
+
+  private restore(): void {
+    if (this.workshopName === undefined || !this.provider.loaded) {
+      return;
+    }
+    const item = this.provider.workshopItem(this.workshopName);
+    if (item === undefined) {
+      this.select(undefined);
+    } else if (this.treeView.visible) {
+      void this.treeView.reveal(item, { select: true, focus: false });
+    } else {
+      return; // reveal would open the closed view
+    }
+    this.workshopName = undefined;
+  }
+
+  private select(name: string | undefined): void {
+    void this.memento?.update(SELECTED_WORKSHOP_KEY, name);
+    this.emitter.fire(name);
   }
 
   dispose(): void {

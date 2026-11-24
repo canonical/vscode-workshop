@@ -4,10 +4,12 @@ import * as vscode from 'vscode';
 import { WorkshopInfo, WorkshopNotProjectError, WorkshopUnavailableError } from '../api/client';
 import { WorkshopPoller } from '../poller';
 import { Workshop } from '../api/workshops';
+import { SELECTED_WORKSHOP_KEY } from '../state';
 import { WorkshopIncompatibleError } from '../version';
 import {
   VIEW_STATE_CONTEXT,
   WorkshopDecorationProvider,
+  WorkshopSelection,
   WorkshopsTreeProvider,
 } from '../ui/workshopsTree';
 
@@ -365,6 +367,27 @@ suite('WorkshopsTreeProvider', () => {
     provider.dispose();
   });
 
+  test('workshopItem finds a root row of the last poll, or none once the workshop is gone', async () => {
+    let workshops: Workshop[] = [{ name: 'web', status: 'On', projectId: 'proj-1' }];
+    const poller = new WorkshopPoller<Workshop[]>(() => Promise.resolve(workshops), 50_000);
+    const provider = new WorkshopsTreeProvider(poller, fakeDetailsClient);
+    assert.strictEqual(provider.loaded, false);
+
+    await poller.poll();
+    assert.strictEqual(provider.loaded, true);
+    const item = provider.workshopItem('web');
+    assert.strictEqual(item?.label, 'web');
+    assert.strictEqual(provider.getParent(), undefined);
+    assert.strictEqual(provider.workshopItem('db'), undefined);
+
+    workshops = [];
+    await poller.poll();
+    assert.strictEqual(provider.workshopItem('web'), undefined);
+
+    poller.dispose();
+    provider.dispose();
+  });
+
   test('loads workshop details for waiting workshops', async () => {
     const workshops: Workshop[] = [{ name: 'web', status: 'Waiting', projectId: 'proj-1' }];
     const poller = new WorkshopPoller<Workshop[]>(() => Promise.resolve(workshops), 50_000);
@@ -525,6 +548,170 @@ suite('WorkshopsTreeProvider', () => {
 
     poller.dispose();
     provider.dispose();
+  });
+});
+
+class MemoryMemento implements vscode.Memento {
+  private readonly store = new Map<string, unknown>();
+
+  get<T>(key: string): T | undefined;
+  get<T>(key: string, defaultValue: T): T;
+  get<T>(key: string, defaultValue?: T): T | undefined {
+    return (this.store.has(key) ? this.store.get(key) : defaultValue) as T | undefined;
+  }
+
+  update(key: string, value: unknown): Thenable<void> {
+    if (value === undefined) {
+      this.store.delete(key);
+    } else {
+      this.store.set(key, value);
+    }
+    return Promise.resolve();
+  }
+
+  keys(): readonly string[] {
+    return [...this.store.keys()];
+  }
+
+  setKeysForSync(_keys: readonly string[]): void {}
+}
+
+/** The parts of a TreeView that WorkshopSelection uses; reveal selects the row. */
+class FakeTreeView {
+  selection: vscode.TreeItem[] = [];
+  visible = true;
+  readonly revealed: string[] = [];
+  private readonly selectionEmitter = new vscode.EventEmitter<vscode.TreeViewSelectionChangeEvent<vscode.TreeItem>>();
+  private readonly visibilityEmitter = new vscode.EventEmitter<vscode.TreeViewVisibilityChangeEvent>();
+  readonly onDidChangeSelection = this.selectionEmitter.event;
+  readonly onDidChangeVisibility = this.visibilityEmitter.event;
+
+  reveal(item: vscode.TreeItem): Promise<void> {
+    this.revealed.push(String(item.label));
+    this.select(item);
+    return Promise.resolve();
+  }
+
+  select(item: vscode.TreeItem): void {
+    this.selection = [item];
+    this.selectionEmitter.fire({ selection: this.selection });
+  }
+
+  show(): void {
+    this.visible = true;
+    this.visibilityEmitter.fire({ visible: true });
+  }
+}
+
+function makeSelection(options: {
+  workshops: Workshop[];
+  memento?: vscode.Memento;
+  connected?: string;
+  visible?: boolean;
+}) {
+  const poller = new WorkshopPoller<Workshop[]>(() => Promise.resolve(options.workshops), 50_000);
+  const provider = new WorkshopsTreeProvider(poller, fakeDetailsClient);
+  const view = new FakeTreeView();
+  view.visible = options.visible ?? true;
+  const selection = new WorkshopSelection(
+    view as unknown as vscode.TreeView<vscode.TreeItem>,
+    provider,
+    options.memento ? options.memento.get<string>(SELECTED_WORKSHOP_KEY) : options.connected,
+    options.memento,
+  );
+  const changes: (string | undefined)[] = [];
+  selection.onDidChange((name) => changes.push(name));
+  const dispose = () => {
+    selection.dispose();
+    provider.dispose();
+    poller.dispose();
+  };
+  return { poller, provider, view, selection, changes, dispose };
+}
+
+const twoWorkshops: Workshop[] = [
+  { name: 'web', status: 'On', projectId: 'proj-1' },
+  { name: 'db', status: 'Off', projectId: 'proj-1' },
+];
+
+suite('WorkshopSelection', () => {
+  test('a local window restores the remembered workshop once the tree lists it', async () => {
+    const memento = new MemoryMemento();
+    await memento.update(SELECTED_WORKSHOP_KEY, 'db');
+    const { poller, view, selection, changes, dispose } = makeSelection({ workshops: twoWorkshops, memento });
+
+    assert.strictEqual(selection.toRestore, 'db');
+    assert.deepStrictEqual(view.revealed, []);
+    await poller.poll();
+    assert.deepStrictEqual(view.revealed, ['db']);
+    assert.deepStrictEqual(changes, ['db']);
+    assert.strictEqual(selection.toRestore, undefined);
+
+    dispose();
+  });
+
+  test('a workshop window selects the connected workshop and remembers nothing', async () => {
+    const { poller, provider, view, selection, changes, dispose } = makeSelection({
+      workshops: twoWorkshops,
+      connected: 'web',
+    });
+
+    assert.strictEqual(selection.toRestore, 'web');
+    await poller.poll();
+    assert.deepStrictEqual(view.revealed, ['web']);
+
+    view.select(provider.workshopItem('db')!);
+    assert.deepStrictEqual(changes, ['web', 'db']);
+
+    dispose();
+  });
+
+  test('a closed tree is not opened; the workshop is restored when it is shown', async () => {
+    const memento = new MemoryMemento();
+    await memento.update(SELECTED_WORKSHOP_KEY, 'web');
+    const { poller, view, dispose } = makeSelection({ workshops: twoWorkshops, memento, visible: false });
+
+    await poller.poll();
+    assert.deepStrictEqual(view.revealed, []);
+    view.show();
+    assert.deepStrictEqual(view.revealed, ['web']);
+
+    dispose();
+  });
+
+  test('a remembered workshop that is gone is dropped', async () => {
+    const memento = new MemoryMemento();
+    await memento.update(SELECTED_WORKSHOP_KEY, 'gone');
+    const { poller, view, selection, changes, dispose } = makeSelection({
+      workshops: twoWorkshops,
+      memento,
+      visible: false,
+    });
+
+    await poller.poll();
+    assert.strictEqual(selection.toRestore, undefined);
+    assert.deepStrictEqual(changes, [undefined]);
+    assert.strictEqual(memento.get(SELECTED_WORKSHOP_KEY), undefined);
+    assert.deepStrictEqual(view.revealed, []);
+
+    dispose();
+  });
+
+  test('selecting a detail row selects and remembers its workshop', async () => {
+    const workshops: Workshop[] = [{ name: 'web', status: 'On', projectId: 'proj-1' }];
+    const memento = new MemoryMemento();
+    const { poller, provider, view, changes, dispose } = makeSelection({ workshops, memento });
+
+    await poller.poll();
+    const row = provider.getChildren()[0];
+    view.select(provider.getChildren(row)[0]);
+    assert.deepStrictEqual(changes, ['web']);
+    assert.strictEqual(memento.get(SELECTED_WORKSHOP_KEY), 'web');
+
+    view.select(row);
+    assert.deepStrictEqual(changes, ['web', 'web']);
+
+    dispose();
   });
 });
 

@@ -8,15 +8,17 @@ import { fetchPanelData, PanelData } from './interfaces/data';
 import { MSG_NO_WORKSHOPS } from './interfaces/panelState';
 import { WorkshopOperationQueue } from './interfaces/queue';
 import { WorkshopPoller } from './poller';
+import { SELECTED_WORKSHOP_KEY } from './state';
 import { assertWorkshopVersionCompatible } from './version';
 import { createDefinitionWatcher } from './ui/definitionWatcher';
 import { LogsView } from './ui/logsView';
-import { MOUNTS_VIEW_ID, MountsPanelProvider } from './ui/mountsPanel';
 import { createMountsUi } from './ui/mountsUi';
+import { PANEL_VIEW_ID, WorkshopPanelProvider } from './ui/workshopPanel';
 import {
   VIEW_STATE_CONTEXT,
   WorkshopsTreeProvider,
   WorkshopItem,
+  WorkshopSelection,
 } from './ui/workshopsTree';
 import { createWorkshopCommands } from './workshopCommands';
 import {
@@ -62,7 +64,7 @@ export function activate(context: vscode.ExtensionContext): void {
     queue: new WorkshopOperationQueue(),
     log,
   });
-  const mountsPanel = new MountsPanelProvider(
+  const workshopPanel = new WorkshopPanelProvider(
     {
       loadData: async (selection): Promise<PanelData> => {
         const projectId = await projects.getId();
@@ -85,18 +87,18 @@ export function activate(context: vscode.ExtensionContext): void {
   }
   updateTreeViewTitle();
 
-  // The panel follows the workshop selected in the tree — a workshop row or
-  // any of its detail children.
-  function selectedTreeWorkshop(): string | undefined {
-    for (const item of treeView.selection) {
-      const name = provider.workshopNameForItem(item);
-      if (name !== undefined) {
-        return name;
-      }
-    }
-    return undefined;
-  }
-  mountsPanel.setSelectedWorkshop(selectedTreeWorkshop());
+  // A local window remembers its selection; a workshop window selects the one it is connected to.
+  const memento = isWorkshopWindow() ? undefined : context.workspaceState;
+  const selection = new WorkshopSelection(
+    treeView,
+    provider,
+    memento
+      ? memento.get<string>(SELECTED_WORKSHOP_KEY)
+      : currentWorkshop(context.globalState)?.session?.workshopName,
+    memento,
+  );
+  // The panel follows the workshop selected in the tree.
+  workshopPanel.setSelectedWorkshop(selection.toRestore);
 
   let activationHandle: vscode.Disposable | undefined;
   function onViewVisible(): void {
@@ -107,9 +109,6 @@ export function activate(context: vscode.ExtensionContext): void {
     }
   }
 
-  if (treeView.visible) {
-    onViewVisible();
-  }
   if (isWorkshopWindow()) {
     const session = currentWorkshop(context.globalState)?.session;
     if (session) {
@@ -126,25 +125,25 @@ export function activate(context: vscode.ExtensionContext): void {
     poller,
     provider,
     treeView,
-    mountsPanel,
-    vscode.window.registerWebviewViewProvider(MOUNTS_VIEW_ID, mountsPanel),
+    workshopPanel,
+    vscode.window.registerWebviewViewProvider(PANEL_VIEW_ID, workshopPanel),
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
       updateTreeViewTitle();
       projects.invalidate();
       void poller.poll();
     }),
     vscode.window.registerFileDecorationProvider(provider.decorationProvider),
-    treeView.onDidChangeSelection(() => {
-      // A workshop row or any of its children switches the panel; other
-      // selections keep the current workshop shown.
-      const name = selectedTreeWorkshop();
-      if (name !== undefined) {
-        mountsPanel.setSelectedWorkshop(name);
-        // Surface the panel if it's collapsed/closed; leave it alone (and
-        // leave focus on the tree) if it's already showing.
-        if (!mountsPanel.visible) {
-          void vscode.commands.executeCommand(`${MOUNTS_VIEW_ID}.focus`, { preserveFocus: true });
-        }
+    selection,
+    selection.onDidChange((name) => {
+      // Already shown, e.g. restored on activation: leave a closed panel closed.
+      if (name === workshopPanel.selectedWorkshop) {
+        return;
+      }
+      workshopPanel.setSelectedWorkshop(name);
+      // Surface the panel if it's collapsed/closed; leave it alone (and
+      // leave focus on the tree) if it's already showing.
+      if (name !== undefined && !workshopPanel.visible) {
+        void vscode.commands.executeCommand(`${PANEL_VIEW_ID}.focus`, { preserveFocus: true });
       }
     }),
     treeView.onDidChangeVisibility((event) => {

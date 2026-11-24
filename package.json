@@ -70,7 +70,7 @@
       "workshop-panel": [
         {
           "type": "webview",
-          "id": "workshop.mounts",
+          "id": "workshop.panel",
           "name": "Workshop"
         }
       ]
