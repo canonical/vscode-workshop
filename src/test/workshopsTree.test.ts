@@ -131,6 +131,8 @@ suite('WorkshopsTreeProvider', () => {
       light: '/extension/media/workshop-active.svg',
       dark: '/extension/media/workshop-active-dark.svg',
     });
+    assert.strictEqual(itemsAfter.find((i) => i.label === 'web')!.description, 'On · Active');
+    assert.strictEqual(itemsAfter.find((i) => i.label === 'api')!.description, 'On');
 
     poller.dispose();
     provider.dispose();
